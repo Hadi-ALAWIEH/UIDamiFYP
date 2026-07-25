@@ -1,0 +1,128 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// Keep these in sync with the backend DamiFYP.Domain enums.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TODO: BACKEND – BusinessRole enum (DamiFYP.Domain/Enums/BusinessRole.cs)
+export enum BusinessRole {
+    None           = 0,
+    Admin          = 1,
+    Donor          = 2,
+    Seeker         = 3,
+    DonorAndSeeker = 4,
+    ManageAccount  = 5,
+}
+
+// TODO: BACKEND – BloodTypeName enum (DamiFYP.Domain/Enums/BloodTypeName.cs)
+export enum BloodTypeName {
+    APositive  = 0,
+    ANegative  = 1,
+    BPositive  = 2,
+    BNegative  = 3,
+    OPositive  = 4,
+    ONegative  = 5,
+    AbPositive = 6,
+    AbNegative = 7,
+}
+
+// TODO: BACKEND – DonationRequestStatus enum
+export enum DonationRequestStatus {
+    Pending   = 0,
+    Matched   = 1,
+    Completed = 2,
+    Cancelled = 3,
+}
+
+// TODO: BACKEND – DonationRequestUrgency enum
+export enum DonationRequestUrgency {
+    Low    = 0,
+    Medium = 1,
+    High   = 2,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API RESPONSE SHAPES
+// These must match the ViewModel classes returned by the backend.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returned by POST /api/CompleteOnboarding (CompleteUserOnboardingViewModel)
+export interface UserProfileData {
+    userId:        number;
+    name:          string;
+    email:         string;
+    businessRole:  BusinessRole;
+    latitude?:     number;
+    longitude?:    number;
+    isAvailable:   boolean;
+    // Fields only present in GET /api/GetUserProfile (not in CompleteOnboarding response)
+    bloodTypeName?: string | null;  // enum name string e.g. "APositive", null if not set
+    createdAt?:     string;         // ISO 8601
+}
+
+// Returned by GET /api/donationrequest endpoints (DonationRequestViewModel)
+// NOTE: bloodTypeName is serialized as a string by the backend ("APositive", "OPositive", etc.)
+export interface DonationRequestViewModel {
+    id:            number;
+    damiUserId:    number;
+    bloodTypeName: string | null;   // enum name string from backend, e.g. "APositive"
+    quantity?:     number;
+    latitude?:     number;
+    longitude?:    number;
+    address?:      string;
+    urgency:       DonationRequestUrgency;
+    status:        DonationRequestStatus;
+    createdAt:     string;          // ISO 8601
+    neededByDate?: string;          // ISO 8601
+}
+
+// A matching donor candidate (inside DonationRequestMatchCandidatesViewModel)
+// Also reused as the response shape for GET /api/donationpost/get-current-user-donation-posts
+// NOTE: When returned for "my posts", only bloodTypeName and quantity are populated.
+export interface DonationPostCandidateViewModel {
+    donationPostId: number;
+    donorUserId:    number;
+    donorName:      string;
+    donorAddress:   string;
+    bloodTypeName:  string | null;  // enum name string from backend
+    quantity?:      number;
+}
+
+// Returned by POST /api/donationrequest and GET /api/donationpost/get-candidates-{id}
+export interface DonationRequestMatchCandidatesViewModel {
+    donationRequest: DonationRequestViewModel;
+    candidates:      DonationPostCandidateViewModel[];
+}
+
+// Returned by GET /api/bloodtype/GetAllBloodTypes
+export interface BloodTypeViewModel {
+    id:          number;
+    description: string; // enum name string, e.g. "APositive"
+}
+
+// Single conversation (inside AllConversationsViewModel)
+// TODO: BACKEND – Align with ConversationViewModel if the backend shape changes
+export interface ConversationViewModel {
+    conversationId:               number;
+    matchId:                      number;
+    donationRequestId:            number;
+    donationPostId:               number;
+    matchStatus?:                 string;
+    matchCreatedAt:               string;
+    donationRequestBloodTypeName: string;
+    donationRequestQuantity?:     number;
+    donationPostBloodTypeName:    string;
+    donationPostQuantity?:        number;
+    otherUserId:                  number;
+    otherUserName:                string;
+    otherUserEmail:               string;
+    otherUserRole:                BusinessRole;
+    latestMessageContent?:        string;
+    latestMessageSentAt?:         string;
+    latestMessageSenderUserId?:   number;
+    latestMessageSenderName?:     string;
+}
+
+// Returned by GET /api/conversation/get-all-conversations
+export interface AllConversationsViewModel {
+    conversations: ConversationViewModel[];
+}
