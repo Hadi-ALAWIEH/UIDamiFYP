@@ -28,6 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const navItems: NavItem[] = [
         { icon: "🏠", label: "Dashboard",            to: "/dashboard",          show: true      },
         { icon: "📋", label: "My Requests",           to: "/requests",           show: isSeeker  },
+        { icon: "🎯", label: "Find Donors",           to: "/candidates",         show: isSeeker  },
         { icon: "🔬", label: "Blood Availability",    to: "/predict",            show: isSeeker  },
         { icon: "📌", label: "My Posts",              to: "/posts",              show: isDonor   },
         { icon: "🔍", label: "Available Requests",    to: "/available-requests", show: isDonor   },

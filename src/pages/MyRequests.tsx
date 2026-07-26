@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import AppLayout, { page } from "../components/AppLayout.tsx";
-import { bloodTypeNameStringToLabel, BLOOD_TYPE_OPTIONS } from "../utils/bloodTypes";
+import { bloodTypeNameStringToLabel, BLOOD_TYPE_NAME_OPTIONS } from "../utils/bloodTypes";
 import {
     getMyDonationRequests,
     createDonationRequest,
@@ -57,8 +57,8 @@ export default function MyRequests() {
     const [confirming,  setConfirming]  = useState<number | null>(null);
 
     // ── Form state ──────────────────────────────────────────────────────────
-    // TODO: BACKEND – These fields map to CreateDonationRequestPayload
-    const [formBloodType,    setFormBloodType]    = useState(0);
+    // bloodTypeName is sent as the enum name string (backend field is string? + Enum.TryParse)
+    const [formBloodType,    setFormBloodType]    = useState("APositive");
     const [formQuantity,     setFormQuantity]     = useState(1);
     const [formUrgency,      setFormUrgency]      = useState(DonationRequestUrgency.Medium);
     const [formAddress,      setFormAddress]      = useState("");
@@ -190,9 +190,9 @@ export default function MyRequests() {
                             <select
                                 style={page.input}
                                 value={formBloodType}
-                                onChange={e => setFormBloodType(Number(e.target.value))}
+                                onChange={e => setFormBloodType(e.target.value)}
                             >
-                                {BLOOD_TYPE_OPTIONS.map(o => (
+                                {BLOOD_TYPE_NAME_OPTIONS.map(o => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
                                 ))}
                             </select>

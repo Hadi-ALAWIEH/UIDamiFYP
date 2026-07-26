@@ -32,7 +32,8 @@ export function bloodTypeNameStringToLabel(name: string): string {
     return map[name] ?? name;
 }
 
-// All options for a <select> element
+// Integer-value options — use when the endpoint accepts the enum directly
+// (e.g. POST /api/donationpost/create-donation-post whose command field is BloodTypeName enum)
 export const BLOOD_TYPE_OPTIONS = [
     { value: BloodTypeName.APositive,  label: "A+"  },
     { value: BloodTypeName.ANegative,  label: "A-"  },
@@ -42,4 +43,17 @@ export const BLOOD_TYPE_OPTIONS = [
     { value: BloodTypeName.ONegative,  label: "O-"  },
     { value: BloodTypeName.AbPositive, label: "AB+" },
     { value: BloodTypeName.AbNegative, label: "AB-" },
+] as const;
+
+// String-name options — use when the endpoint declares bloodTypeName as string?
+// and uses Enum.TryParse internally (e.g. POST /api/donationrequest)
+export const BLOOD_TYPE_NAME_OPTIONS = [
+    { value: "APositive",  label: "A+"  },
+    { value: "ANegative",  label: "A-"  },
+    { value: "BPositive",  label: "B+"  },
+    { value: "BNegative",  label: "B-"  },
+    { value: "OPositive",  label: "O+"  },
+    { value: "ONegative",  label: "O-"  },
+    { value: "AbPositive", label: "AB+" },
+    { value: "AbNegative", label: "AB-" },
 ] as const;

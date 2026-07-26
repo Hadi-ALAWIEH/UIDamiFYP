@@ -326,6 +326,10 @@ export default function Conversations() {
 
                             {/* Messages */}
                             <div style={st.messageArea}>
+
+                                {/* ── Match contract card (pinned at top of every conversation) ── */}
+                                <MatchContractCard conv={activeConv} />
+
                                 {joining && (
                                     <p style={st.centreMsg}>Loading messages…</p>
                                 )}
@@ -418,6 +422,193 @@ export default function Conversations() {
         </AppLayout>
     );
 }
+
+// ── Match contract card ───────────────────────────────────────────────────────
+// Shown at the top of every conversation — summarises the donation agreement.
+
+function MatchContractCard({ conv }: { conv: ConversationViewModel }) {
+    const reqBlood  = bloodLabel(conv.donationRequestBloodTypeName);
+    const postBlood = bloodLabel(conv.donationPostBloodTypeName);
+    const matchDate = new Date(conv.matchCreatedAt).toLocaleDateString("en-US", {
+        month: "long", day: "numeric", year: "numeric",
+    });
+
+    return (
+        <div style={ct.card}>
+            {/* Title row */}
+            <div style={ct.titleRow}>
+                <span style={ct.titleIcon}>🩸</span>
+                <span style={ct.title}>Donation Agreement</span>
+                {conv.matchStatus && (
+                    <span style={ct.statusPill}>{conv.matchStatus}</span>
+                )}
+                <span style={ct.matchDate}>Matched {matchDate}</span>
+            </div>
+
+            {/* Detail grid */}
+            <div style={ct.grid}>
+                {/* Seeker side */}
+                <div style={ct.side}>
+                    <div style={ct.sideLabel}>Request</div>
+                    <div style={ct.bloodBadge}>{reqBlood}</div>
+                    {conv.donationRequestQuantity != null && (
+                        <div style={ct.detail}>
+                            {conv.donationRequestQuantity} unit{conv.donationRequestQuantity !== 1 ? "s" : ""} needed
+                        </div>
+                    )}
+                    <div style={ct.roleLabel}>Blood Seeker</div>
+                </div>
+
+                {/* Arrow */}
+                <div style={ct.arrow}>↔</div>
+
+                {/* Donor side */}
+                <div style={ct.side}>
+                    <div style={ct.sideLabel}>Post</div>
+                    <div style={ct.bloodBadge}>{postBlood}</div>
+                    {conv.donationPostQuantity != null && (
+                        <div style={ct.detail}>
+                            {conv.donationPostQuantity} unit{conv.donationPostQuantity !== 1 ? "s" : ""} available
+                        </div>
+                    )}
+                    <div style={ct.roleLabel}>Blood Donor · {conv.otherUserName}</div>
+                </div>
+            </div>
+
+            {/* Contact row */}
+            <div style={ct.contactRow}>
+                <span style={ct.contactLabel}>Contact</span>
+                <span style={ct.contactValue}>{conv.otherUserName}</span>
+                {conv.otherUserEmail && (
+                    <>
+                        <span style={ct.contactSep}>·</span>
+                        <a href={`mailto:${conv.otherUserEmail}`} style={ct.emailLink}>
+                            {conv.otherUserEmail}
+                        </a>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// Contract card styles
+const ct = {
+    card: {
+        background:   "#fff",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 12,
+        padding:      "14px 18px",
+        marginBottom: 4,
+        boxShadow:    "0 1px 3px rgba(0,0,0,0.05)",
+    } as React.CSSProperties,
+    titleRow: {
+        display:      "flex",
+        alignItems:   "center",
+        gap:          8,
+        marginBottom: 12,
+        flexWrap:     "wrap" as const,
+    } as React.CSSProperties,
+    titleIcon: {
+        fontSize: 16,
+    } as React.CSSProperties,
+    title: {
+        fontWeight: 700,
+        fontSize:   13,
+        color:      "#1e293b",
+        flex:       1,
+    } as React.CSSProperties,
+    statusPill: {
+        fontSize:     10,
+        fontWeight:   700,
+        padding:      "2px 8px",
+        borderRadius: 99,
+        background:   "#dbeafe",
+        color:        "#1e40af",
+        textTransform:"uppercase" as const,
+        letterSpacing:"0.4px",
+    } as React.CSSProperties,
+    matchDate: {
+        fontSize: 11,
+        color:    "#94a3b8",
+    } as React.CSSProperties,
+    grid: {
+        display:        "flex",
+        alignItems:     "center",
+        gap:            16,
+        marginBottom:   12,
+        padding:        "10px 0",
+        borderTop:      "1px solid #f8fafc",
+        borderBottom:   "1px solid #f8fafc",
+    } as React.CSSProperties,
+    side: {
+        flex:          1,
+        display:       "flex",
+        flexDirection: "column" as const,
+        gap:           3,
+    } as React.CSSProperties,
+    sideLabel: {
+        fontSize:      10,
+        fontWeight:    700,
+        color:         "#94a3b8",
+        textTransform: "uppercase" as const,
+        letterSpacing: "0.5px",
+        marginBottom:  2,
+    } as React.CSSProperties,
+    bloodBadge: {
+        fontSize:     18,
+        fontWeight:   800,
+        color:        "#991b1b",
+        background:   "#fee2e2",
+        border:       "1.5px solid #fecaca",
+        borderRadius: 8,
+        padding:      "4px 14px",
+        display:      "inline-block",
+        width:        "fit-content",
+    } as React.CSSProperties,
+    detail: {
+        fontSize:   12,
+        color:      "#64748b",
+        marginTop:  2,
+    } as React.CSSProperties,
+    roleLabel: {
+        fontSize:  11,
+        color:     "#94a3b8",
+        marginTop: 2,
+    } as React.CSSProperties,
+    arrow: {
+        fontSize:  20,
+        color:     "#cbd5e1",
+        flexShrink: 0,
+    } as React.CSSProperties,
+    contactRow: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        6,
+        flexWrap:   "wrap" as const,
+    } as React.CSSProperties,
+    contactLabel: {
+        fontSize:      10,
+        fontWeight:    700,
+        color:         "#94a3b8",
+        textTransform: "uppercase" as const,
+        letterSpacing: "0.5px",
+    } as React.CSSProperties,
+    contactValue: {
+        fontSize:   13,
+        fontWeight: 600,
+        color:      "#1e293b",
+    } as React.CSSProperties,
+    contactSep: {
+        color:  "#cbd5e1",
+        fontSize: 12,
+    } as React.CSSProperties,
+    emailLink: {
+        fontSize:       12,
+        color:          "#c62828",
+        textDecoration: "none",
+    } as React.CSSProperties,
+};
 
 // ── Connection status indicator ───────────────────────────────────────────────
 

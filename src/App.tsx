@@ -7,6 +7,7 @@ import MyPosts          from "./pages/MyPosts.tsx";
 import AvailableRequests from "./pages/AvailableRequests.tsx";
 import Conversations      from "./pages/Conversations.tsx";
 import BloodAvailability  from "./pages/BloodAvailability.tsx";
+import Candidates         from "./pages/Candidates.tsx";
 import type {JSX} from "react";
 
 // ── Role-based route guards ────────────────────────────────────────────────
@@ -66,6 +67,13 @@ function AppRoutes() {
                 path="/available-requests"
                 element={
                     <RequireDonor><AvailableRequests /></RequireDonor>
+                }
+            />
+
+            <Route
+                path="/candidates"
+                element={
+                    <RequireSeeker><Candidates /></RequireSeeker>
                 }
             />
 

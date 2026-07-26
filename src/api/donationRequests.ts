@@ -7,9 +7,10 @@ import type {
 // ── Request payloads ────────────────────────────────────────────────────────
 
 export interface CreateDonationRequestPayload {
-    // TODO: BACKEND – bloodTypeName is sent as an integer (BloodTypeName enum value).
-    //   If the endpoint starts accepting a string like "OPositive", change this to string.
-    bloodTypeName:  number;
+    // Backend CreateDonationRequestCommand.BloodTypeName is string? and uses Enum.TryParse internally.
+    // Must be the enum name exactly: "APositive", "ANegative", "BPositive", "BNegative",
+    // "OPositive", "ONegative", "AbPositive", "AbNegative"
+    bloodTypeName:  string;
     quantity:       number;
     latitude?:      number;
     longitude?:     number;
@@ -19,7 +20,7 @@ export interface CreateDonationRequestPayload {
 }
 
 export interface UpdateDonationRequestPayload {
-    bloodTypeName:  number;
+    bloodTypeName:  string;  // same as Create — enum name string
     quantity:       number;
     latitude?:      number;
     longitude?:     number;
