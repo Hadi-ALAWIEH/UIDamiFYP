@@ -126,3 +126,23 @@ export interface ConversationViewModel {
 export interface AllConversationsViewModel {
     conversations: ConversationViewModel[];
 }
+
+// A single chat message — returned by JoinConversation (SignalR), ReceiveMessage callback,
+// and GET /api/conversation/{id}/messages
+export interface MessageViewModel {
+    messageId:      number;
+    conversationId: number;
+    senderUserId:   number;
+    senderName:     string;
+    content:        string;
+    sentAt:         string;  // ISO 8601 UTC
+    isRead:         boolean;
+}
+
+// Pushed to user's personal SignalR group ("user-{id}") when a match is confirmed
+export interface ConversationStartedNotification {
+    conversationId: number;
+    matchId:        number;
+    otherUserId:    number;
+    otherUserName:  string;
+}
