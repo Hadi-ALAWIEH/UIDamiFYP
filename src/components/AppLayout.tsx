@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { logout } from "../auth/Keycloak.ts";
 import { useUser } from "../context/UserContext.tsx";
+import { useConversations } from "../context/useConversations.ts";
 import { getRoleBadgeStyle, getRoleLabel } from "../utils/roles";
 
 // ── Nav item definition ────────────────────────────────────────────────────
@@ -11,6 +12,7 @@ interface NavItem {
     label: string;
     to:    string;
     show:  boolean;
+    badge?: number;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -18,6 +20,7 @@ interface NavItem {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const location = useLocation();
     const { profile, isDonor, isSeeker, clearProfile } = useUser();
+    const { unreadCount } = useConversations();
 
     const displayName = profile?.name ?? "User";
     const roleBadge   = getRoleBadgeStyle(profile?.businessRole ?? 0);
@@ -25,6 +28,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     // The `show` flag gates items by role so only relevant pages appear.
     // Blood Availability requires CanViewBloodAvailabilityPredictions (Seeker, ManageAccount).
+    // `badge` shows an unread-count pill on the nav item — currently only
+    // used by Conversations, so the user can tell new messages arrived
+    // without having to open the page first.
     const navItems: NavItem[] = [
         { icon: "🏠", label: "Dashboard",            to: "/dashboard",          show: true      },
         { icon: "📋", label: "My Requests",           to: "/requests",           show: isSeeker  },
@@ -32,7 +38,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { icon: "🔬", label: "Blood Availability",    to: "/predict",            show: isSeeker  },
         { icon: "📌", label: "My Posts",              to: "/posts",              show: isDonor   },
         { icon: "🔍", label: "Available Requests",    to: "/available-requests", show: isDonor   },
-        { icon: "💬", label: "Conversations",         to: "/conversations",      show: true      },
+        { icon: "💬", label: "Conversations",         to: "/conversations",      show: true, badge: unreadCount },
     ];
 
     function handleLogout() {
@@ -78,7 +84,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                     : s.navLink}
                             >
                                 <span style={s.navIcon}>{item.icon}</span>
-                                {item.label}
+                                <span style={s.navLabel}>{item.label}</span>
+                                {!!item.badge && (
+                                    <span style={s.navBadge}>
+                                        {item.badge > 9 ? "9+" : item.badge}
+                                    </span>
+                                )}
                             </Link>
                         );
                     })}
@@ -214,6 +225,23 @@ const s = {
         fontSize:  15,
         width:     20,
         textAlign: "center" as const,
+    },
+    navLabel: {
+        flex: 1,
+    },
+    navBadge: {
+        minWidth:     18,
+        height:       18,
+        padding:      "0 5px",
+        borderRadius: 99,
+        background:   "#fff",
+        color:        "#c62828",
+        fontSize:     10.5,
+        fontWeight:   800,
+        display:      "flex",
+        alignItems:   "center",
+        justifyContent: "center",
+        flexShrink:   0,
     },
     logoutBtn: {
         margin:      "0 12px",
