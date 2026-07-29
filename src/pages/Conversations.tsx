@@ -1,24 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import {
-    HubConnectionBuilder,
-    HubConnectionState,
-    HttpTransportType,
-    type HubConnection,
-} from "@microsoft/signalr";
+import { HubConnectionState } from "@microsoft/signalr";
 import AppLayout from "../components/AppLayout.tsx";
-import { getAllConversations } from "../api/conversations";
-import { keycloak } from "../auth/Keycloak.ts";
+import { useConversations } from "../context/useConversations.ts";
 import { bloodTypeNameStringToLabel } from "../utils/bloodTypes";
 import type {
     ConversationViewModel,
     MessageViewModel,
-    ConversationStartedNotification,
 } from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const BASE_URL = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
 
 function fmtTime(iso: string): string {
     const d   = new Date(iso);
@@ -45,10 +36,19 @@ function bloodLabel(name: string | null | undefined): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Conversations() {
-    // ── Conversation list ─────────────────────────────────────────────────────
-    const [conversations, setConversations] = useState<ConversationViewModel[]>([]);
-    const [convLoading,   setConvLoading]   = useState(true);
-    const [convError,     setConvError]     = useState<string | null>(null);
+    // Conversation list + the single app-wide SignalR connection both live in
+    // ConversationsContext (see src/context/ConversationsContext.tsx) so the
+    // sidebar unread badge keeps working even when this page isn't mounted.
+    const {
+        conversations,
+        conversationsLoading,
+        connStatus,
+        connRef,
+        activeIdRef,
+        latestMessage,
+        isUnread,
+        markConversationSeen,
+    } = useConversations();
 
     // ── Active chat ───────────────────────────────────────────────────────────
     const [activeConv, setActiveConv] = useState<ConversationViewModel | null>(null);
@@ -60,83 +60,25 @@ export default function Conversations() {
     const [input,   setInput]   = useState("");
     const [sending, setSending] = useState(false);
 
-    // ── SignalR ───────────────────────────────────────────────────────────────
-    const [connStatus, setConnStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
-
-    const connRef     = useRef<HubConnection | null>(null);
-    const activeIdRef = useRef<number | null>(null); // always reflects the latest active conv id
     const messagesEnd = useRef<HTMLDivElement>(null);
 
-    // ── Boot: connect to hub + load conversation list ─────────────────────────
+    // This page "owns" activeIdRef while it's mounted and a chat is open —
+    // clear it on unmount so a message arriving after the user navigates away
+    // doesn't get silently marked as seen.
     useEffect(() => {
-        // Load sidebar list from REST endpoint (does not need SignalR)
-        getAllConversations()
-            .then(d => setConversations(d.conversations ?? []))
-            .catch(err => setConvError(err instanceof Error ? err.message : "Failed to load."))
-            .finally(() => setConvLoading(false));
+        return () => { activeIdRef.current = null; };
+    }, [activeIdRef]);
 
-        // Build connection to /hubs/chat.
-        // skipNegotiation + WebSockets-only bypasses the HTTP POST negotiate step,
-        // which fails in dev when the browser hasn't trusted the self-signed cert
-        // for cross-origin fetch requests. WebSocket upgrades are not subject to
-        // the same CORS preflight restriction, so this works reliably in dev and prod.
-        // The hub reads the JWT from the `access_token` query param (standard SignalR pattern).
-        const conn = new HubConnectionBuilder()
-            .withUrl(`${BASE_URL}/hubs/chat`, {
-                accessTokenFactory: () => keycloak.token ?? "",
-                skipNegotiation:    true,
-                transport:          HttpTransportType.WebSockets,
-            })
-            .withAutomaticReconnect()
-            .build();
-
-        // Server → client: a participant sent a message in a joined conversation
-        conn.on("ReceiveMessage", (msg: MessageViewModel) => {
-            // Append to messages only if this belongs to the currently open conversation
-            if (msg.conversationId === activeIdRef.current) {
-                setMessages(prev => [...prev, msg]);
-            }
-            // Always update the sidebar preview
-            setConversations(prev =>
-                prev.map(c =>
-                    c.conversationId === msg.conversationId
-                        ? {
-                              ...c,
-                              latestMessageContent:      msg.content,
-                              latestMessageSentAt:       msg.sentAt,
-                              latestMessageSenderUserId: msg.senderUserId,
-                              latestMessageSenderName:   msg.senderName,
-                          }
-                        : c
-                )
-            );
-        });
-
-        // Server → client: a match was confirmed and created a new conversation
-        conn.on("ConversationStarted", (_n: ConversationStartedNotification) => {
-            getAllConversations().then(d => setConversations(d.conversations ?? []));
-        });
-
-        conn.onreconnecting(() => setConnStatus("connecting"));
-        conn.onreconnected(() => {
-            setConnStatus("connected");
-            // Rejoin the active conversation after reconnection
-            if (activeIdRef.current !== null) {
-                conn.invoke<MessageViewModel[]>("JoinConversation", activeIdRef.current)
-                    .then(history => setMessages(history ?? []))
-                    .catch(() => {});
-            }
-        });
-        conn.onclose(() => setConnStatus("disconnected"));
-
-        conn.start()
-            .then(() => setConnStatus("connected"))
-            .catch(() => setConnStatus("disconnected"));
-
-        connRef.current = conn;
-
-        return () => { conn.stop(); };
-    }, []);
+    // Append newly-arrived messages to the currently open chat.
+    useEffect(() => {
+        if (!latestMessage) return;
+        if (latestMessage.conversationId !== activeConv?.conversationId) return;
+        setMessages(prev =>
+            prev.some(m => m.messageId === latestMessage.messageId)
+                ? prev
+                : [...prev, latestMessage]
+        );
+    }, [latestMessage, activeConv?.conversationId]);
 
     // Auto-scroll to the newest message whenever messages change
     useEffect(() => {
@@ -149,16 +91,21 @@ export default function Conversations() {
         if (!conn) return;
         if (activeConv?.conversationId === conv.conversationId) return; // already open
 
-        // Leave the previous conversation group on the server
-        if (activeIdRef.current !== null) {
-            conn.invoke("LeaveConversation", activeIdRef.current).catch(() => {});
-        }
+        // NOTE: we intentionally do NOT leave the previously-active
+        // conversation's group here anymore. The app stays joined to every
+        // conversation's group for the whole session (see
+        // ConversationsContext) so the sidebar unread badge keeps receiving
+        // live messages for conversations that aren't currently open.
 
         setActiveConv(conv);
         setMessages([]);
         setChatError(null);
         setJoining(true);
         activeIdRef.current = conv.conversationId;
+
+        // Opening it counts as seeing it — clears the unread badge for this
+        // conversation immediately, before the history even finishes loading.
+        markConversationSeen(conv.conversationId, conv.latestMessageSentAt);
 
         if (conn.state !== HubConnectionState.Connected) {
             setChatError("Not connected to chat. Please wait for reconnection.");
@@ -231,10 +178,9 @@ export default function Conversations() {
                         <ConnectionDot status={connStatus} />
                     </div>
 
-                    {convLoading && <p style={st.hint}>Loading…</p>}
-                    {convError   && <p style={{ ...st.hint, color: "#dc2626" }}>{convError}</p>}
+                    {conversationsLoading && <p style={st.hint}>Loading…</p>}
 
-                    {!convLoading && !convError && conversations.length === 0 && (
+                    {!conversationsLoading && conversations.length === 0 && (
                         <p style={st.hint}>
                             No conversations yet.
                             Confirm a donation match to start chatting.
@@ -244,6 +190,7 @@ export default function Conversations() {
                     <div style={st.convList}>
                         {conversations.map(conv => {
                             const isActive = activeConv?.conversationId === conv.conversationId;
+                            const unread   = isUnread(conv);
                             return (
                                 <button
                                     key={conv.conversationId}
@@ -262,7 +209,12 @@ export default function Conversations() {
                                     </div>
 
                                     <div style={st.convBody}>
-                                        <div style={st.convName}>{conv.otherUserName}</div>
+                                        <div style={{
+                                            ...st.convName,
+                                            ...(unread ? st.convNameUnread : {}),
+                                        }}>
+                                            {conv.otherUserName}
+                                        </div>
                                         <div style={st.convPreview}>
                                             {conv.latestMessageContent ?? "No messages yet"}
                                         </div>
@@ -277,6 +229,8 @@ export default function Conversations() {
                                             )}
                                         </div>
                                     </div>
+
+                                    {unread && <span style={st.unreadDot} />}
                                 </button>
                             );
                         })}
@@ -707,6 +661,7 @@ const st = {
         cursor:       "pointer",
         fontFamily:   "inherit",
         textAlign:    "left" as const,
+        position:     "relative" as const,
     } as React.CSSProperties,
 
     convBtnActive: {
@@ -740,6 +695,10 @@ const st = {
         whiteSpace:   "nowrap" as const,
     } as React.CSSProperties,
 
+    convNameUnread: {
+        fontWeight: 800,
+    } as React.CSSProperties,
+
     convPreview: {
         fontSize:     12,
         color:        "#94a3b8",
@@ -769,6 +728,17 @@ const st = {
         fontSize:   10,
         color:      "#cbd5e1",
         marginLeft: "auto",
+    } as React.CSSProperties,
+
+    unreadDot: {
+        position:     "absolute" as const,
+        top:          14,
+        right:        12,
+        width:        9,
+        height:       9,
+        borderRadius: "50%",
+        background:   "#c62828",
+        flexShrink:   0,
     } as React.CSSProperties,
 
     // ── Right: chat pane ──────────────────────────────────────────────────────

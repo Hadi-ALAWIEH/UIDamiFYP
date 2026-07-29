@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { UserProvider, useUser } from "./context/UserContext.tsx";
+import { ConversationsProvider } from "./context/ConversationsContext.tsx";
 import Onboarding       from "./pages/Onboarding.tsx";
 import Dashboard        from "./pages/Dashboard.tsx";
 import MyRequests       from "./pages/MyRequests.tsx";
@@ -105,9 +106,19 @@ export default function App() {
         // UserProvider makes the current user's profile available to all pages.
         // It reads from sessionStorage first, then falls back to the Keycloak token.
         <UserProvider>
-            <BrowserRouter>
-                <AppRoutes />
-            </BrowserRouter>
+            {/*
+              ConversationsProvider owns the single app-wide SignalR chat
+              connection (started once the profile is known) and the
+              unread-conversations count used by the sidebar badge in
+              AppLayout. It must sit inside UserProvider (it reads the
+              current user) and outside the router so it stays alive across
+              page navigation.
+            */}
+            <ConversationsProvider>
+                <BrowserRouter>
+                    <AppRoutes />
+                </BrowserRouter>
+            </ConversationsProvider>
         </UserProvider>
     );
 }
