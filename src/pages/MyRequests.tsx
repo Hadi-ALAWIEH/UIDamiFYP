@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import AppLayout, { page } from "../components/AppLayout.tsx";
 import { bloodTypeNameStringToLabel, BLOOD_TYPE_NAME_OPTIONS } from "../utils/bloodTypes";
 import {
@@ -14,6 +20,44 @@ import {
     type DonationRequestViewModel,
     type DonationPostCandidateViewModel,
 } from "../types";
+
+// ── Leaflet icon fix (Vite bundling breaks default asset paths) ────────────
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: markerIcon2x,
+    iconUrl:       markerIcon,
+    shadowUrl:     markerShadow,
+});
+
+const DEFAULT_CENTER: [number, number] = [33.8938, 35.5018];
+
+type LocationStatus = "idle" | "requesting" | "set" | "denied" | "error";
+type SearchResult   = { display_name: string; lat: string; lon: string };
+
+function LocationMarker({
+    position,
+    onPick,
+}: {
+    position: [number, number];
+    onPick: (lat: number, lng: number) => void;
+}) {
+    useMapEvents({
+        click(e) { onPick(e.latlng.lat, e.latlng.lng); },
+    });
+    return (
+        <Marker
+            position={position}
+            draggable
+            eventHandlers={{
+                dragend: (e) => {
+                    const marker = e.target as L.Marker;
+                    const pos = marker.getLatLng();
+                    onPick(pos.lat, pos.lng);
+                },
+            }}
+        />
+    );
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -63,9 +107,100 @@ export default function MyRequests() {
     const [formUrgency,      setFormUrgency]      = useState(DonationRequestUrgency.Medium);
     const [formAddress,      setFormAddress]      = useState("");
     const [formNeededBy,     setFormNeededBy]     = useState("");
-    const [formLat,          setFormLat]          = useState("");
-    const [formLng,          setFormLng]          = useState("");
     const [formError,        setFormError]        = useState<string | null>(null);
+
+    // ── Location picker state (mirrors Onboarding.tsx) ──────────────────────
+    const [latitude,       setLatitude]       = useState<number | undefined>();
+    const [longitude,      setLongitude]      = useState<number | undefined>();
+    const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
+    const [showMap,        setShowMap]        = useState(false);
+    const [isMaximized,    setIsMaximized]    = useState(false);
+    const [searchQuery,    setSearchQuery]    = useState("");
+    const [searchResults,  setSearchResults]  = useState<SearchResult[]>([]);
+    const [searching,      setSearching]      = useState(false);
+    const [searchError,    setSearchError]    = useState<string | null>(null);
+
+    const mapRef = useRef<L.Map | null>(null);
+
+    const markerPosition = useMemo<[number, number]>(
+        () => [latitude ?? DEFAULT_CENTER[0], longitude ?? DEFAULT_CENTER[1]],
+        [latitude, longitude]
+    );
+
+    useEffect(() => {
+        if (!showMap) return;
+        const id = window.setTimeout(() => mapRef.current?.invalidateSize(), 50);
+        return () => window.clearTimeout(id);
+    }, [isMaximized, showMap]);
+
+    useEffect(() => {
+        if (!isMaximized) return;
+        function onKeyDown(e: KeyboardEvent) { if (e.key === "Escape") setIsMaximized(false); }
+        document.body.style.overflow = "hidden";
+        window.addEventListener("keydown", onKeyDown);
+        return () => {
+            document.body.style.overflow = "";
+            window.removeEventListener("keydown", onKeyDown);
+        };
+    }, [isMaximized]);
+
+    // ── Location picker handlers ────────────────────────────────────────────
+
+    function applyPosition(lat: number, lng: number, opts?: { pan?: boolean }) {
+        setLatitude(lat);
+        setLongitude(lng);
+        setLocationStatus("set");
+        if (opts?.pan) mapRef.current?.setView([lat, lng], 15);
+    }
+
+    function handleUseCurrentLocation() {
+        if (!("geolocation" in navigator)) { setLocationStatus("error"); setShowMap(true); return; }
+        setLocationStatus("requesting");
+        navigator.geolocation.getCurrentPosition(
+            (pos) => { applyPosition(pos.coords.latitude, pos.coords.longitude, { pan: true }); setShowMap(true); },
+            ()    => { setLocationStatus("denied"); setShowMap(true); },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    }
+
+    function handleChooseOnMap() { setShowMap(true); }
+
+    function handleClearLocation() {
+        setLatitude(undefined);
+        setLongitude(undefined);
+        setLocationStatus("idle");
+        setShowMap(false);
+        setIsMaximized(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        setSearchError(null);
+    }
+
+    async function handleSearch(e?: FormEvent) {
+        e?.preventDefault();
+        const q = searchQuery.trim();
+        if (!q) return;
+        setSearching(true);
+        setSearchError(null);
+        setSearchResults([]);
+        try {
+            const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`);
+            if (!res.ok) throw new Error("Search request failed");
+            const data = (await res.json()) as SearchResult[];
+            setSearchResults(data);
+            if (data.length === 0) setSearchError("No matching places found.");
+        } catch {
+            setSearchError("Couldn't reach the location search service. Try again.");
+        } finally {
+            setSearching(false);
+        }
+    }
+
+    function handleSelectResult(result: SearchResult) {
+        applyPosition(parseFloat(result.lat), parseFloat(result.lon), { pan: true });
+        setSearchResults([]);
+        setSearchQuery(result.display_name);
+    }
 
     // ── Load ────────────────────────────────────────────────────────────────
 
@@ -93,8 +228,8 @@ export default function MyRequests() {
             quantity:      formQuantity,
             urgency:       formUrgency,
             address:       formAddress || undefined,
-            latitude:      formLat ? Number(formLat) : undefined,
-            longitude:     formLng ? Number(formLng) : undefined,
+            latitude,
+            longitude,
             neededByDate:  formNeededBy ? new Date(formNeededBy).toISOString() : undefined,
         };
 
@@ -247,26 +382,133 @@ export default function MyRequests() {
                             />
                         </div>
 
-                        {/* Location — optional */}
-                        <div style={page.formRow}>
-                            <label style={page.label}>Latitude (optional)</label>
-                            <input
-                                style={page.input}
-                                type="number"
-                                placeholder="33.8938"
-                                value={formLat}
-                                onChange={e => setFormLat(e.target.value)}
-                            />
-                        </div>
-                        <div style={page.formRow}>
-                            <label style={page.label}>Longitude (optional)</label>
-                            <input
-                                style={page.input}
-                                type="number"
-                                placeholder="35.5018"
-                                value={formLng}
-                                onChange={e => setFormLng(e.target.value)}
-                            />
+                        {/* Location picker — optional */}
+                        <div style={{ ...page.formRow, gridColumn: "1 / -1" }}>
+                            <label style={page.label}>Location (optional)</label>
+
+                            {!showMap && (
+                                <div style={s.locRow}>
+                                    <button
+                                        type="button"
+                                        style={s.locationBtn}
+                                        onClick={handleUseCurrentLocation}
+                                        disabled={submitting || locationStatus === "requesting"}
+                                    >
+                                        {locationStatus === "requesting" ? "Getting your location…" : "📍 Use my current location"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        style={s.locationBtnSecondary}
+                                        onClick={handleChooseOnMap}
+                                        disabled={submitting}
+                                    >
+                                        🗺️ Choose on map
+                                    </button>
+                                </div>
+                            )}
+
+                            {showMap && (
+                                <>
+                                    {isMaximized && (
+                                        <div style={s.mapBackdrop} onClick={() => setIsMaximized(false)} />
+                                    )}
+
+                                    <div style={isMaximized ? s.mapPanelMaximized : s.mapPanelInline}>
+
+                                        <div style={s.mapPanelHeader}>
+                                            <form onSubmit={handleSearch} style={s.searchRow}>
+                                                <input
+                                                    style={s.searchInput}
+                                                    placeholder="Search for a place or address…"
+                                                    value={searchQuery}
+                                                    onChange={e => setSearchQuery(e.target.value)}
+                                                    disabled={submitting}
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    style={s.searchBtn}
+                                                    disabled={submitting || searching || !searchQuery.trim()}
+                                                >
+                                                    {searching ? "…" : "🔍"}
+                                                </button>
+                                            </form>
+                                            <button
+                                                type="button"
+                                                style={s.maximizeBtn}
+                                                onClick={() => setIsMaximized(v => !v)}
+                                                disabled={submitting}
+                                                aria-label={isMaximized ? "Restore map" : "Maximize map"}
+                                                title={isMaximized ? "Restore map" : "Maximize map"}
+                                            >
+                                                {isMaximized ? "⤡" : "⤢"}
+                                            </button>
+                                        </div>
+
+                                        {searchResults.length > 0 && (
+                                            <div style={s.searchResults}>
+                                                {searchResults.map((r, i) => (
+                                                    <button
+                                                        key={`${r.lat}-${r.lon}-${i}`}
+                                                        type="button"
+                                                        style={s.searchResultItem}
+                                                        onClick={() => handleSelectResult(r)}
+                                                    >
+                                                        {r.display_name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {searchError && <div style={s.mapHint}>{searchError}</div>}
+
+                                        <MapContainer
+                                            ref={mapRef}
+                                            center={markerPosition}
+                                            zoom={locationStatus === "set" ? 14 : 11}
+                                            style={isMaximized ? { ...s.map, ...s.mapMaximized } : s.map}
+                                        >
+                                            <TileLayer
+                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            />
+                                            <LocationMarker position={markerPosition} onPick={(lat, lng) => applyPosition(lat, lng)} />
+                                        </MapContainer>
+
+                                        <div style={s.mapHint}>
+                                            Search above, tap the map, or drag the pin to set the location.
+                                        </div>
+
+                                        <div style={s.locRow}>
+                                            <button
+                                                type="button"
+                                                style={s.locationBtnSmall}
+                                                onClick={handleUseCurrentLocation}
+                                                disabled={submitting || locationStatus === "requesting"}
+                                            >
+                                                {locationStatus === "requesting" ? "Locating…" : "📍 Use my current location"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                style={s.locationBtnSmall}
+                                                onClick={handleClearLocation}
+                                                disabled={submitting}
+                                            >
+                                                ✕ Clear location
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {locationStatus === "denied" && (
+                                <div style={s.mapHint}>
+                                    Location access was denied — search or pick a point on the map instead, or continue without one.
+                                </div>
+                            )}
+                            {locationStatus === "error" && (
+                                <div style={s.mapHint}>
+                                    Automatic location isn't available on this device/browser — search or pick a point on the map instead.
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -452,5 +694,143 @@ const s = {
         fontSize:     14,
         color:        "#1e293b",
         marginBottom: 2,
+    },
+
+    // Location picker
+    locRow: {
+        display: "flex",
+        gap:     10,
+    },
+    locationBtn: {
+        flex:         1,
+        padding:      "10px 12px",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     13,
+        fontFamily:   "inherit",
+        color:        "#fff",
+        background:   "#c62828",
+        cursor:       "pointer",
+        textAlign:    "center" as const,
+    },
+    locationBtnSecondary: {
+        flex:         1,
+        padding:      "10px 12px",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     13,
+        fontFamily:   "inherit",
+        color:        "#374151",
+        background:   "#f8fafc",
+        cursor:       "pointer",
+        textAlign:    "center" as const,
+    },
+    locationBtnSmall: {
+        flex:         1,
+        padding:      "8px 10px",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     12,
+        fontFamily:   "inherit",
+        color:        "#374151",
+        background:   "#f8fafc",
+        cursor:       "pointer",
+        textAlign:    "center" as const,
+    },
+    mapPanelInline: {
+        display:       "flex",
+        flexDirection: "column" as const,
+        gap:           8,
+    },
+    mapPanelMaximized: {
+        position:      "fixed" as const,
+        inset:         16,
+        zIndex:        1000,
+        background:    "#fff",
+        borderRadius:  16,
+        padding:       16,
+        boxShadow:     "0 24px 60px rgba(0,0,0,0.35)",
+        display:       "flex",
+        flexDirection: "column" as const,
+        gap:           8,
+    },
+    mapBackdrop: {
+        position:   "fixed" as const,
+        inset:      0,
+        background: "rgba(15,23,42,0.55)",
+        zIndex:     999,
+    },
+    mapPanelHeader: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        8,
+    },
+    searchRow: {
+        display: "flex",
+        gap:     6,
+        flex:    1,
+    },
+    searchInput: {
+        flex:         1,
+        padding:      "8px 10px",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     13,
+        fontFamily:   "inherit",
+        color:        "#1e293b",
+        outline:      "none",
+    },
+    searchBtn: {
+        padding:      "8px 12px",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     13,
+        background:   "#f8fafc",
+        cursor:       "pointer",
+    },
+    maximizeBtn: {
+        flexShrink:   0,
+        width:        34,
+        height:       34,
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     15,
+        background:   "#f8fafc",
+        cursor:       "pointer",
+    },
+    searchResults: {
+        display:       "flex",
+        flexDirection: "column" as const,
+        maxHeight:     160,
+        overflowY:     "auto" as const,
+        border:        "1px solid #e2e8f0",
+        borderRadius:  8,
+    },
+    searchResultItem: {
+        padding:      "8px 10px",
+        border:       "none",
+        borderBottom: "1px solid #f1f5f9",
+        background:   "#fff",
+        fontSize:     12,
+        color:        "#374151",
+        textAlign:    "left" as const,
+        cursor:       "pointer",
+        fontFamily:   "inherit",
+    },
+    map: {
+        height:       300,
+        width:        "100%",
+        borderRadius: 10,
+        overflow:     "hidden",
+        border:       "1px solid #e2e8f0",
+    },
+    mapMaximized: {
+        flex:      1,
+        height:    "auto",
+        minHeight: 0,
+    },
+    mapHint: {
+        fontSize: 12,
+        color:    "#94a3b8",
     },
 };
