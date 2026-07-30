@@ -146,3 +146,16 @@ export interface ConversationStartedNotification {
     otherUserId:    number;
     otherUserName:  string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSISTANT ("Ask our bot") — independent feature, not part of the
+// Match/Conversation data model. See DamiFYP.Application.Features.BotAssistant.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returned by GET/POST /api/BotAssistant/messages (BotMessageViewModel)
+// NOTE: role is serialized as a string by the backend ("User" or "Assistant")
+export interface BotMessageViewModel {
+    role:    string;
+    content: string;
+    sentAt:  string; // ISO 8601 UTC
+}

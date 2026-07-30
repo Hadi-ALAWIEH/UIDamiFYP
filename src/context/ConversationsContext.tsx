@@ -27,14 +27,8 @@ import type {
 // "Conversations" nav item even before the user opens that page.
 //
 // The Conversations page itself (src/pages/Conversations.tsx) consumes this
-// same context (via useConversations, in ./useConversations.ts) instead of
-// opening its own connection, so there is only ever one SignalR connection
-// per session.
-//
-// NOTE: this file exports ONLY the ConversationsProvider component — the
-// context object + useConversations hook live in ./useConversations.ts.
-// Keep it that way; a file mixing a component export with a hook export
-// breaks Vite's Fast Refresh (see that file's top comment for details).
+// same context instead of opening its own connection, so there is only ever
+// one SignalR connection per session.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
@@ -59,6 +53,12 @@ function saveSeenMap(map: Record<number, string>): void {
         // ignore storage failures (e.g. private browsing quota)
     }
 }
+
+// NOTE: the Context object and its value type live in useConversations.ts
+// (not here), so every consumer — this provider, AppLayout, the Conversations
+// page — reads from the exact same Context instance. Defining a second,
+// private createContext() here previously caused consumers of the shared one
+// to always see null and throw "must be used inside <ConversationsProvider>".
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
     const { profile } = useUser();
@@ -88,6 +88,36 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             .finally(() => setConversationsLoading(false));
     }, []);
 
+    // Joins every one of the user's conversation groups on the hub so this
+    // connection actually receives ReceiveMessage pushes for all of them —
+    // DamiHub only broadcasts to clients that called JoinConversation for
+    // that specific conversation, it does not just push to "your" messages.
+    // Without this, the badge (and latestMessage) can never update, no
+    // matter how correct the rest of the counting logic is.
+    const joinAllConversations = useCallback(async (conn: HubConnection) => {
+        try {
+            const { conversations: convs } = await getAllConversations();
+            console.log(
+                "[DAMI-BADGE] joining conversation groups:",
+                convs.map(c => c.conversationId)
+            );
+            const results = await Promise.allSettled(
+                convs.map(c =>
+                    conn.invoke("JoinConversation", c.conversationId).catch(err => {
+                        console.error(`[DAMI-BADGE] Failed to join conversation ${c.conversationId}`, err);
+                        throw err;
+                    })
+                )
+            );
+            console.log(
+                "[DAMI-BADGE] join results:",
+                results.map(r => r.status)
+            );
+        } catch (err) {
+            console.error("[DAMI-BADGE] Failed to join conversations after connecting", err);
+        }
+    }, []);
+
     // Boot the connection once we know who's logged in. Re-runs if the user
     // changes (e.g. logout → different account), and tears the connection
     // down on unmount / when there's no profile (logged out).
@@ -108,14 +138,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             .build();
 
         conn.on("ReceiveMessage", (msg: MessageViewModel) => {
-            // eslint-disable-next-line no-console
-            console.log("[Conversations] ReceiveMessage", {
-                conversationId: msg.conversationId,
-                senderUserId:   msg.senderUserId,
-                sentAt:         msg.sentAt,
-                activeId:       activeIdRef.current,
-            });
-
+            console.log("[DAMI-BADGE] ReceiveMessage:", msg);
             setLatestMessage(msg);
 
             setConversations(prev =>
@@ -141,59 +164,32 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
 
         conn.on("ConversationStarted", (n: ConversationStartedNotification) => {
             reload();
-            // Join the new conversation's group immediately so messages sent
-            // in it push live right away, without waiting for the user to
-            // open it first.
-            conn.invoke("JoinConversation", n.conversationId).catch(() => {});
+            // Join it immediately so a message sent right after the match is
+            // confirmed still shows up as unread — no need to wait for a
+            // reconnect cycle to pick up this brand-new conversation.
+            conn.invoke("JoinConversation", n.conversationId).catch(err =>
+                console.error(`Failed to join new conversation ${n.conversationId}`, err)
+            );
         });
-
-        // The server only pushes ReceiveMessage for conversations this
-        // specific connection has joined (via JoinConversation) — it is NOT
-        // enough to just be logged in. So on every (re)connect we join every
-        // conversation the user is part of, not just whichever one happens
-        // to be open in the UI. Without this, the badge only updates for
-        // conversations that were manually opened during THIS connection's
-        // lifetime, which is why it can look like it "stops working" after
-        // a reconnect (group memberships don't survive a reconnect) or when
-        // a message arrives for a conversation that was never opened yet.
-        async function joinAllConversations() {
-            try {
-                const data = await getAllConversations();
-                const list = data.conversations ?? [];
-                setConversations(list);
-                // eslint-disable-next-line no-console
-                console.log(`[Conversations] Joining ${list.length} conversation group(s)…`, list.map(c => c.conversationId));
-                const results = await Promise.allSettled(
-                    list.map(c => conn.invoke("JoinConversation", c.conversationId))
-                );
-                results.forEach((r, i) => {
-                    if (r.status === "rejected") {
-                        // eslint-disable-next-line no-console
-                        console.error(`[Conversations] Failed to join conversation ${list[i].conversationId}:`, r.reason);
-                    }
-                });
-                // eslint-disable-next-line no-console
-                console.log(`[Conversations] Join complete: ${results.filter(r => r.status === "fulfilled").length}/${list.length} succeeded.`);
-            } catch (err) {
-                // eslint-disable-next-line no-console
-                console.error("[Conversations] joinAllConversations failed entirely:", err);
-            }
-        }
 
         conn.onreconnecting(() => setConnStatus("connecting"));
         conn.onreconnected(() => {
             setConnStatus("connected");
-            joinAllConversations();
+            void joinAllConversations(conn);
         });
         conn.onclose(() => setConnStatus("disconnected"));
 
+        console.log("[DAMI-BADGE] starting connection for user", profile.userId);
         conn.start()
             .then(() => {
+                console.log("[DAMI-BADGE] connection started, state:", conn.state);
                 setConnStatus("connected");
-                return joinAllConversations();
+                return joinAllConversations(conn);
             })
-            .catch(() => setConnStatus("disconnected"))
-            .finally(() => setConversationsLoading(false));
+            .catch(err => {
+                console.error("[DAMI-BADGE] connection failed to start", err);
+                setConnStatus("disconnected");
+            });
 
         connRef.current = conn;
 
@@ -217,16 +213,16 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     const unreadCount = conversations.filter(isUnread).length;
 
     useEffect(() => {
-        // eslint-disable-next-line no-console
-        console.log("[Conversations] unreadCount recomputed:", unreadCount, conversations.map(c => ({
-            id:       c.conversationId,
-            unread:   isUnread(c),
-            latestAt: c.latestMessageSentAt,
-            sender:   c.latestMessageSenderUserId,
-            seenAt:   seenMap[c.conversationId],
-        })));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [unreadCount, conversations]);
+        console.log(
+            "[DAMI-BADGE] unreadCount recomputed:", unreadCount,
+            "conversations:", conversations.map(c => ({
+                id: c.conversationId,
+                lastSentAt: c.latestMessageSentAt,
+                lastSenderId: c.latestMessageSenderUserId,
+                seenAt: seenMap[c.conversationId],
+            }))
+        );
+    }, [unreadCount, conversations, seenMap]);
 
     return (
         <ConversationsContext.Provider value={{
@@ -245,3 +241,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
         </ConversationsContext.Provider>
     );
 }
+
+// Deliberately NOT re-exporting useConversations() here — this file must
+// export ONLY the ConversationsProvider component for Vite Fast Refresh to
+// hot-swap it cleanly. Import the hook directly from useConversations.ts.

@@ -7,6 +7,7 @@ import MyRequests       from "./pages/MyRequests.tsx";
 import MyPosts          from "./pages/MyPosts.tsx";
 import AvailableRequests from "./pages/AvailableRequests.tsx";
 import Conversations      from "./pages/Conversations.tsx";
+import AskBot             from "./pages/AskBot.tsx";
 import BloodAvailability  from "./pages/BloodAvailability.tsx";
 import Candidates         from "./pages/Candidates.tsx";
 import type {JSX} from "react";
@@ -89,6 +90,9 @@ function AppRoutes() {
             {/* All authenticated users */}
             <Route path="/conversations" element={<Conversations />} />
 
+            {/* Independent of Conversations — see DamiFYP.Application.Features.BotAssistant */}
+            <Route path="/ask-bot" element={<AskBot />} />
+
             {/* TODO: Add a /profile page for viewing/editing user details */}
             {/* TODO: Add a /conversations/:id page for individual chat view */}
 
@@ -105,15 +109,10 @@ export default function App() {
     return (
         // UserProvider makes the current user's profile available to all pages.
         // It reads from sessionStorage first, then falls back to the Keycloak token.
+        // ConversationsProvider owns the single app-wide SignalR connection and the
+        // unread-count state, so it must wrap BrowserRouter too — the sidebar badge
+        // (rendered by AppLayout on every page) needs it even outside /conversations.
         <UserProvider>
-            {/*
-              ConversationsProvider owns the single app-wide SignalR chat
-              connection (started once the profile is known) and the
-              unread-conversations count used by the sidebar badge in
-              AppLayout. It must sit inside UserProvider (it reads the
-              current user) and outside the router so it stays alive across
-              page navigation.
-            */}
             <ConversationsProvider>
                 <BrowserRouter>
                     <AppRoutes />
