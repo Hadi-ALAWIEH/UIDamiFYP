@@ -115,6 +115,23 @@ export default function Candidates() {
                         : r
                 )
             );
+            // Also flag this specific donor as matched within the slot's candidate
+            // list — this is what GetCandidatesAsync now persists server-side too,
+            // so it stays correct even if the request panel is reopened later
+            // without a full reload (e.g. before navigating away).
+            setSlots(prev => {
+                const slot = prev[requestId];
+                if (!slot?.candidates) return prev;
+                return {
+                    ...prev,
+                    [requestId]: {
+                        ...slot,
+                        candidates: slot.candidates.map(c =>
+                            c.donationPostId === donationPostId ? { ...c, isMatched: true } : c
+                        ),
+                    },
+                };
+            });
             patchSlot(requestId, { confirming: null, matchedWith: donationPostId, expanded: false });
         } catch (err) {
             patchSlot(requestId, {
@@ -282,6 +299,7 @@ export default function Candidates() {
                                                         candidate={c}
                                                         confirming={slot.confirming === c.donationPostId}
                                                         anyConfirming={slot.confirming !== null}
+                                                        alreadyMatched={!!c.isMatched}
                                                         onConfirm={() => handleConfirm(req.id, c.donationPostId)}
                                                     />
                                                 ))}
@@ -305,12 +323,14 @@ function CandidateCard({
     candidate,
     confirming,
     anyConfirming,
+    alreadyMatched,
     onConfirm,
 }: {
-    candidate:     DonationPostCandidateViewModel;
-    confirming:    boolean;
-    anyConfirming: boolean;
-    onConfirm:     () => void;
+    candidate:      DonationPostCandidateViewModel;
+    confirming:     boolean;
+    anyConfirming:  boolean;
+    alreadyMatched: boolean;
+    onConfirm:      () => void;
 }) {
     return (
         <div style={st.candidateCard}>
@@ -335,19 +355,35 @@ function CandidateCard({
                 </div>
             </div>
 
-            {/* Action */}
-            <button
-                style={{
-                    ...page.primaryBtn,
-                    opacity:    anyConfirming ? 0.6 : 1,
-                    whiteSpace: "nowrap",
+            {/* Action — once this donor is already matched to the request, replace
+                the button entirely with a non-interactive "Matched" pill so it
+                can't be confirmed again (whether that happened just now in this
+                session, or on an earlier visit — either way the server already
+                told us via candidate.isMatched). */}
+            {alreadyMatched ? (
+                <span style={{
+                    ...page.statusChip("#dcfce7", "#166534"),
                     minWidth:   120,
-                }}
-                onClick={onConfirm}
-                disabled={anyConfirming}
-            >
-                {confirming ? "Confirming…" : "Confirm Match"}
-            </button>
+                    textAlign:  "center" as const,
+                    fontSize:   13,
+                    padding:    "9px 16px",
+                }}>
+                    ✓ Matched
+                </span>
+            ) : (
+                <button
+                    style={{
+                        ...page.primaryBtn,
+                        opacity:    anyConfirming ? 0.6 : 1,
+                        whiteSpace: "nowrap",
+                        minWidth:   120,
+                    }}
+                    onClick={onConfirm}
+                    disabled={anyConfirming}
+                >
+                    {confirming ? "Confirming…" : "Confirm Match"}
+                </button>
+            )}
         </div>
     );
 }
