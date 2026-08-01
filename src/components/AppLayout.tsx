@@ -8,10 +8,10 @@ import { getRoleBadgeStyle, getRoleLabel } from "../utils/roles";
 // ── Nav item definition ────────────────────────────────────────────────────
 
 interface NavItem {
-    icon:  string;
-    label: string;
-    to:    string;
-    show:  boolean;
+    icon:   string;
+    label:  string;
+    to:     string;
+    show:   boolean;
     badge?: number;
 }
 
@@ -28,9 +28,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     // The `show` flag gates items by role so only relevant pages appear.
     // Blood Availability requires CanViewBloodAvailabilityPredictions (Seeker, ManageAccount).
-    // `badge` shows an unread-count pill on the nav item — currently only
-    // used by Conversations, so the user can tell new messages arrived
-    // without having to open the page first.
     const navItems: NavItem[] = [
         { icon: "🏠", label: "Dashboard",            to: "/dashboard",          show: true      },
         { icon: "📋", label: "My Requests",           to: "/requests",           show: isSeeker  },
@@ -39,6 +36,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { icon: "📌", label: "My Posts",              to: "/posts",              show: isDonor   },
         { icon: "🔍", label: "Available Requests",    to: "/available-requests", show: isDonor   },
         { icon: "💬", label: "Conversations",         to: "/conversations",      show: true, badge: unreadCount },
+        { icon: "🤖", label: "Ask our bot",           to: "/ask-bot",            show: true      },
     ];
 
     function handleLogout() {
@@ -230,18 +228,18 @@ const s = {
         flex: 1,
     },
     navBadge: {
-        minWidth:     18,
-        height:       18,
-        padding:      "0 5px",
-        borderRadius: 99,
-        background:   "#fff",
-        color:        "#c62828",
-        fontSize:     10.5,
-        fontWeight:   800,
-        display:      "flex",
-        alignItems:   "center",
+        minWidth:       18,
+        height:         18,
+        padding:        "0 5px",
+        borderRadius:   9,
+        background:     "#ef4444",
+        color:          "#fff",
+        fontSize:       10.5,
+        fontWeight:     700,
+        display:        "flex",
+        alignItems:     "center",
         justifyContent: "center",
-        flexShrink:   0,
+        flexShrink:     0,
     },
     logoutBtn: {
         margin:      "0 12px",

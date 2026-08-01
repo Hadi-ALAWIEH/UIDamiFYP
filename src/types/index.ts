@@ -85,6 +85,10 @@ export interface DonationPostCandidateViewModel {
     donorAddress:   string;
     bloodTypeName:  string | null;  // enum name string from backend
     quantity?:      number;
+    // True when this donor has already been confirmed as a match for the
+    // request this candidate list was fetched for — persisted server-side,
+    // so it survives page reloads (unlike a purely local "just confirmed" flag).
+    isMatched?:     boolean;
 }
 
 // Returned by POST /api/donationrequest and GET /api/donationpost/get-candidates-{id}
@@ -145,4 +149,17 @@ export interface ConversationStartedNotification {
     matchId:        number;
     otherUserId:    number;
     otherUserName:  string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSISTANT ("Ask our bot") — independent feature, not part of the
+// Match/Conversation data model. See DamiFYP.Application.Features.BotAssistant.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returned by GET/POST /api/BotAssistant/messages (BotMessageViewModel)
+// NOTE: role is serialized as a string by the backend ("User" or "Assistant")
+export interface BotMessageViewModel {
+    role:    string;
+    content: string;
+    sentAt:  string; // ISO 8601 UTC
 }

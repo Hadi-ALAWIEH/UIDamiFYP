@@ -27,38 +27,28 @@ import type {
 // "Conversations" nav item even before the user opens that page.
 //
 // The Conversations page itself (src/pages/Conversations.tsx) consumes this
-// same context (via useConversations, in ./useConversations.ts) instead of
-// opening its own connection, so there is only ever one SignalR connection
-// per session.
-//
-// NOTE: this file exports ONLY the ConversationsProvider component — the
-// context object + useConversations hook live in ./useConversations.ts.
-// Keep it that way; a file mixing a component export with a hook export
-// breaks Vite's Fast Refresh (see that file's top comment for details).
+// same context instead of opening its own connection, so there is only ever
+// one SignalR connection per session.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
 
-// Per-conversation "last seen" timestamps, persisted so unread state
-// survives page refreshes / navigation within the same browser session.
-const SEEN_STORAGE_KEY = "dami_conversations_last_seen";
+// Unread state used to live purely client-side, in a sessionStorage "last
+// seen" map. That never actually got written to in practice (nothing called
+// markConversationSeen with a real conversation id), and even if it had,
+// sessionStorage-only state can't answer "has this been read" correctly
+// after a logout/login — there's nothing wrong with that log-in that a
+// client-only flag could fix, since the true answer lives server-side.
+// The backend now tracks this for real (Message.IsRead, flipped when a
+// conversation is opened — see GetConversationMessagesQuery) and returns an
+// authoritative `isUnread` per conversation from GetAllConversations. This
+// provider just mirrors that value and keeps it live via SignalR.
 
-function loadSeenMap(): Record<number, string> {
-    try {
-        const raw = sessionStorage.getItem(SEEN_STORAGE_KEY);
-        return raw ? (JSON.parse(raw) as Record<number, string>) : {};
-    } catch {
-        return {};
-    }
-}
-
-function saveSeenMap(map: Record<number, string>): void {
-    try {
-        sessionStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(map));
-    } catch {
-        // ignore storage failures (e.g. private browsing quota)
-    }
-}
+// NOTE: the Context object and its value type live in useConversations.ts
+// (not here), so every consumer — this provider, AppLayout, the Conversations
+// page — reads from the exact same Context instance. Defining a second,
+// private createContext() here previously caused consumers of the shared one
+// to always see null and throw "must be used inside <ConversationsProvider>".
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
     const { profile } = useUser();
@@ -66,18 +56,20 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     const [conversations, setConversations]               = useState<ConversationViewModel[]>([]);
     const [conversationsLoading, setConversationsLoading]  = useState(true);
     const [connStatus, setConnStatus]                      = useState<"connecting" | "connected" | "disconnected">("connecting");
-    const [seenMap, setSeenMap]                             = useState<Record<number, string>>(() => loadSeenMap());
     const [latestMessage, setLatestMessage]                 = useState<MessageViewModel | null>(null);
 
     const connRef     = useRef<HubConnection | null>(null);
     const activeIdRef = useRef<number | null>(null);
 
-    const markConversationSeen = useCallback((conversationId: number, at?: string) => {
-        setSeenMap(prev => {
-            const next = { ...prev, [conversationId]: at ?? new Date().toISOString() };
-            saveSeenMap(next);
-            return next;
-        });
+    // Optimistically flips a conversation to read in local state. The server
+    // is the source of truth (see the "ConversationRead" handler below, which
+    // does the same thing in response to the backend actually persisting it),
+    // this just avoids a flash of "unread" for the connection that triggered
+    // the read in the first place.
+    const markConversationSeen = useCallback((conversationId: number, _at?: string) => {
+        setConversations(prev =>
+            prev.map(c => c.conversationId === conversationId ? { ...c, isUnread: false } : c)
+        );
     }, []);
 
     const reload = useCallback(() => {
@@ -86,6 +78,34 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             .then(d => setConversations(d.conversations ?? []))
             .catch(() => {})
             .finally(() => setConversationsLoading(false));
+    }, []);
+
+    // Subscribes to every one of the user's conversation groups on the hub so
+    // this connection actually receives ReceiveMessage pushes for all of them —
+    // DamiHub only broadcasts to clients that joined that specific conversation's
+    // group, it does not just push to "your" messages. Without this, the badge
+    // (and latestMessage) can never update, no matter how correct the rest of
+    // the counting logic is.
+    //
+    // Deliberately calls SubscribeToConversation, NOT JoinConversation — this
+    // runs for every conversation the moment the app connects, and JoinConversation
+    // marks messages read as a side effect (that's what makes the badge correct
+    // after logout/login in the first place). If this used JoinConversation, just
+    // having the app open would silently mark everything read on every boot.
+    const joinAllConversations = useCallback(async (conn: HubConnection) => {
+        try {
+            const { conversations: convs } = await getAllConversations();
+            await Promise.allSettled(
+                convs.map(c =>
+                    conn.invoke("SubscribeToConversation", c.conversationId).catch(err => {
+                        console.error(`Failed to subscribe to conversation ${c.conversationId}`, err);
+                        throw err;
+                    })
+                )
+            );
+        } catch (err) {
+            console.error("Failed to subscribe to conversations after connecting", err);
+        }
     }, []);
 
     // Boot the connection once we know who's logged in. Re-runs if the user
@@ -108,14 +128,6 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             .build();
 
         conn.on("ReceiveMessage", (msg: MessageViewModel) => {
-            // eslint-disable-next-line no-console
-            console.log("[Conversations] ReceiveMessage", {
-                conversationId: msg.conversationId,
-                senderUserId:   msg.senderUserId,
-                sentAt:         msg.sentAt,
-                activeId:       activeIdRef.current,
-            });
-
             setLatestMessage(msg);
 
             setConversations(prev =>
@@ -127,73 +139,63 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
                               latestMessageSentAt:       msg.sentAt,
                               latestMessageSenderUserId: msg.senderUserId,
                               latestMessageSenderName:   msg.senderName,
+                              // A message that just arrived from someone else is
+                              // unread by definition; an echo of a message I sent
+                              // myself obviously isn't. This is only the optimistic,
+                              // instant-feedback layer — GetAllConversations (on
+                              // reload/login) and "ConversationRead" below are what
+                              // make the count correct, since this alone wouldn't
+                              // survive a refresh.
+                              isUnread: profile ? msg.senderUserId !== profile.userId : c.isUnread,
                           }
                         : c
                 )
             );
 
-            // If the user currently has this exact conversation open, it's
-            // seen the instant it arrives — don't let it count as unread.
+            // If the user currently has this exact conversation open, DamiHub
+            // already marked it read server-side as part of JoinConversation —
+            // this just keeps this connection's own copy in sync instantly.
             if (msg.conversationId === activeIdRef.current) {
-                markConversationSeen(msg.conversationId, msg.sentAt);
+                markConversationSeen(msg.conversationId);
             }
+        });
+
+        // The backend marks a conversation's messages read when the user opens
+        // it (JoinConversation), but that happens on whichever connection opened
+        // it — usually the Conversations page's own connection, not this one.
+        // This event is how that update reaches this connection's copy of the
+        // list, so the sidebar badge drops immediately instead of waiting for
+        // the next full reload.
+        conn.on("ConversationRead", ({ conversationId }: { conversationId: number }) => {
+            markConversationSeen(conversationId);
         });
 
         conn.on("ConversationStarted", (n: ConversationStartedNotification) => {
             reload();
-            // Join the new conversation's group immediately so messages sent
-            // in it push live right away, without waiting for the user to
-            // open it first.
-            conn.invoke("JoinConversation", n.conversationId).catch(() => {});
+            // Subscribe immediately so a message sent right after the match is
+            // confirmed still shows up as unread — no need to wait for a
+            // reconnect cycle to pick up this brand-new conversation.
+            conn.invoke("SubscribeToConversation", n.conversationId).catch(err =>
+                console.error(`Failed to subscribe to new conversation ${n.conversationId}`, err)
+            );
         });
-
-        // The server only pushes ReceiveMessage for conversations this
-        // specific connection has joined (via JoinConversation) — it is NOT
-        // enough to just be logged in. So on every (re)connect we join every
-        // conversation the user is part of, not just whichever one happens
-        // to be open in the UI. Without this, the badge only updates for
-        // conversations that were manually opened during THIS connection's
-        // lifetime, which is why it can look like it "stops working" after
-        // a reconnect (group memberships don't survive a reconnect) or when
-        // a message arrives for a conversation that was never opened yet.
-        async function joinAllConversations() {
-            try {
-                const data = await getAllConversations();
-                const list = data.conversations ?? [];
-                setConversations(list);
-                // eslint-disable-next-line no-console
-                console.log(`[Conversations] Joining ${list.length} conversation group(s)…`, list.map(c => c.conversationId));
-                const results = await Promise.allSettled(
-                    list.map(c => conn.invoke("JoinConversation", c.conversationId))
-                );
-                results.forEach((r, i) => {
-                    if (r.status === "rejected") {
-                        // eslint-disable-next-line no-console
-                        console.error(`[Conversations] Failed to join conversation ${list[i].conversationId}:`, r.reason);
-                    }
-                });
-                // eslint-disable-next-line no-console
-                console.log(`[Conversations] Join complete: ${results.filter(r => r.status === "fulfilled").length}/${list.length} succeeded.`);
-            } catch (err) {
-                // eslint-disable-next-line no-console
-                console.error("[Conversations] joinAllConversations failed entirely:", err);
-            }
-        }
 
         conn.onreconnecting(() => setConnStatus("connecting"));
         conn.onreconnected(() => {
             setConnStatus("connected");
-            joinAllConversations();
+            void joinAllConversations(conn);
         });
         conn.onclose(() => setConnStatus("disconnected"));
 
         conn.start()
             .then(() => {
                 setConnStatus("connected");
-                return joinAllConversations();
+                return joinAllConversations(conn);
             })
-            .catch(() => setConnStatus("disconnected"))
-            .finally(() => setConversationsLoading(false));
+            .catch(err => {
+                console.error("Connection failed to start", err);
+                setConnStatus("disconnected");
+            });
 
         connRef.current = conn;
 
@@ -203,30 +205,12 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
         };
     }, [profile?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const isUnread = useCallback((conv: ConversationViewModel): boolean => {
-        // Nothing sent yet, or the last message was sent by me — nothing new.
-        if (!conv.latestMessageSentAt || conv.latestMessageSenderUserId == null) return false;
-        if (profile && conv.latestMessageSenderUserId === profile.userId) return false;
-
-        const lastSeen = seenMap[conv.conversationId];
-        if (!lastSeen) return true; // this conversation has never been opened
-
-        return new Date(conv.latestMessageSentAt).getTime() > new Date(lastSeen).getTime();
-    }, [seenMap, profile]);
+    // Source of truth is the server-computed conv.isUnread (see
+    // GetAllConversationsRequest), kept current in between reloads by the
+    // ReceiveMessage/ConversationRead handlers above.
+    const isUnread = useCallback((conv: ConversationViewModel): boolean => !!conv.isUnread, []);
 
     const unreadCount = conversations.filter(isUnread).length;
-
-    useEffect(() => {
-        // eslint-disable-next-line no-console
-        console.log("[Conversations] unreadCount recomputed:", unreadCount, conversations.map(c => ({
-            id:       c.conversationId,
-            unread:   isUnread(c),
-            latestAt: c.latestMessageSentAt,
-            sender:   c.latestMessageSenderUserId,
-            seenAt:   seenMap[c.conversationId],
-        })));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [unreadCount, conversations]);
 
     return (
         <ConversationsContext.Provider value={{
@@ -245,3 +229,7 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
         </ConversationsContext.Provider>
     );
 }
+
+// Deliberately NOT re-exporting useConversations() here — this file must
+// export ONLY the ConversationsProvider component for Vite Fast Refresh to
+// hot-swap it cleanly. Import the hook directly from useConversations.ts.
