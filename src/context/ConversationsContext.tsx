@@ -15,6 +15,8 @@ import { useUser } from "./UserContext.tsx";
 import { ConversationsContext } from "./useConversations.ts";
 import type {
     ConversationViewModel,
+    DonationPostMatchNotification,
+    LocationUpdate,
     MessageViewModel,
     ConversationStartedNotification,
 } from "../types";
@@ -57,6 +59,12 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
     const [conversationsLoading, setConversationsLoading]  = useState(true);
     const [connStatus, setConnStatus]                      = useState<"connecting" | "connected" | "disconnected">("connecting");
     const [latestMessage, setLatestMessage]                 = useState<MessageViewModel | null>(null);
+    const [pendingMatchNotification, setPendingMatchNotification] =
+        useState<DonationPostMatchNotification | null>(null);
+    const clearMatchNotification = useCallback(() => setPendingMatchNotification(null), []);
+
+    const [liveLocations, setLiveLocations] =
+        useState<Record<number, LocationUpdate | 'ended'>>({});
 
     const connRef     = useRef<HubConnection | null>(null);
     const activeIdRef = useRef<number | null>(null);
@@ -170,6 +178,18 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             markConversationSeen(conversationId);
         });
 
+        conn.on("DonationPostMatch", (n: DonationPostMatchNotification) => {
+            setPendingMatchNotification(n);
+        });
+
+        conn.on("LocationUpdate", (update: LocationUpdate) => {
+            setLiveLocations(prev => ({ ...prev, [update.conversationId]: update }));
+        });
+
+        conn.on("LocationStopped", ({ conversationId }: { conversationId: number }) => {
+            setLiveLocations(prev => ({ ...prev, [conversationId]: 'ended' }));
+        });
+
         conn.on("ConversationStarted", (n: ConversationStartedNotification) => {
             reload();
             // Subscribe immediately so a message sent right after the match is
@@ -224,6 +244,9 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             isUnread,
             markConversationSeen,
             reload,
+            pendingMatchNotification,
+            clearMatchNotification,
+            liveLocations,
         }}>
             {children}
         </ConversationsContext.Provider>

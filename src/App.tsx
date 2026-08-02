@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { UserProvider, useUser } from "./context/UserContext.tsx";
 import { ConversationsProvider } from "./context/ConversationsContext.tsx";
+import DonationMatchToast from "./components/DonationMatchToast.tsx";
 import Onboarding       from "./pages/Onboarding.tsx";
 import Dashboard        from "./pages/Dashboard.tsx";
 import MyRequests       from "./pages/MyRequests.tsx";
@@ -115,6 +116,9 @@ export default function App() {
         <UserProvider>
             <ConversationsProvider>
                 <BrowserRouter>
+                    {/* DonationMatchToast must be inside BrowserRouter to use useNavigate,
+                        and inside ConversationsProvider to read the pending notification. */}
+                    <DonationMatchToast />
                     <AppRoutes />
                 </BrowserRouter>
             </ConversationsProvider>
