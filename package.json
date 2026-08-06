@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.14",
     "@microsoft/signalr": "^10.0.0",
     "keycloak-js": "^26.2.4",
     "leaflet": "^1.9.4",

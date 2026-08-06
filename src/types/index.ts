@@ -40,6 +40,14 @@ export enum DonationRequestUrgency {
     High   = 2,
 }
 
+// TODO: BACKEND – VerificationStatus enum (DamiFYP.Domain/Models/VerificationStatus.cs)
+export enum VerificationStatus {
+    NotStarted = 0,
+    Pending    = 1,
+    Verified   = 2,
+    Failed     = 3,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API RESPONSE SHAPES
 // These must match the ViewModel classes returned by the backend.
@@ -57,6 +65,22 @@ export interface UserProfileData {
     // Fields only present in GET /api/GetUserProfile (not in CompleteOnboarding response)
     bloodTypeName?: string | null;  // enum name string e.g. "APositive", null if not set
     createdAt?:     string;         // ISO 8601
+    // Only present on GET /api/GetUserProfile - CompleteOnboarding's response
+    // predates the verification step and doesn't carry it.
+    verificationStatus?: VerificationStatus;
+}
+
+// Returned by GET /api/verification/status (VerificationStatusViewModel)
+export interface VerificationStatusResponse {
+    status:       VerificationStatus;
+    attemptCount: number;
+}
+
+// Returned by POST /api/verification/submit (SubmitVerificationViewModel)
+export interface SubmitVerificationResponse {
+    status:        VerificationStatus;
+    failureReason: string | null;
+    attemptCount:  number;
 }
 
 // Returned by GET /api/donationrequest endpoints (DonationRequestViewModel)
@@ -124,6 +148,11 @@ export interface ConversationViewModel {
     latestMessageSentAt?:         string;
     latestMessageSenderUserId?:   number;
     latestMessageSenderName?:     string;
+    // Server-computed (Message.IsRead) - see GetAllConversationsRequestHandler.
+    // Was already read/written by ConversationsContext.tsx before this field
+    // existed here; this just makes the type match what the backend actually
+    // returns.
+    isUnread:                     boolean;
 }
 
 // Returned by GET /api/conversation/get-all-conversations
