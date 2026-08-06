@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { HubConnectionState } from "@microsoft/signalr";
 import AppLayout from "../components/AppLayout.tsx";
+import LiveLocationMap from "../components/LiveLocationMap.tsx";
 import { useConversations } from "../context/useConversations.ts";
+import { useUser } from "../context/UserContext.tsx";
 import { bloodTypeNameStringToLabel } from "../utils/bloodTypes";
 import type {
     ConversationViewModel,
@@ -39,6 +41,7 @@ export default function Conversations() {
     // Conversation list + the single app-wide SignalR connection both live in
     // ConversationsContext (see src/context/ConversationsContext.tsx) so the
     // sidebar unread badge keeps working even when this page isn't mounted.
+    const { profile, isDonor: isDonorRole } = useUser();
     const {
         conversations,
         conversationsLoading,
@@ -48,6 +51,7 @@ export default function Conversations() {
         latestMessage,
         isUnread,
         markConversationSeen,
+        liveLocations,
     } = useConversations();
 
     // ── Active chat ───────────────────────────────────────────────────────────
@@ -60,7 +64,52 @@ export default function Conversations() {
     const [input,   setInput]   = useState("");
     const [sending, setSending] = useState(false);
 
+    // ── Live location sharing ─────────────────────────────────────────────────
+    // isSharing / localLivePos = this user's own sharing state (from watchPosition).
+    // The other participant's position comes from liveLocations in context (via SignalR).
+    const [isSharing,    setIsSharing]    = useState(false);
+    const [localLivePos, setLocalLivePos] = useState<{ lat: number; lng: number } | null>(null);
+    const watchIdRef = useRef<number | null>(null);
+
     const messagesEnd = useRef<HTMLDivElement>(null);
+
+    // True when the current user is the donor for the active conversation.
+    // Prefer the explicit donorUserId comparison (accurate per-conversation)
+    // but fall back to the role check when donorUserId is 0 — which happens
+    // while profile.userId is still loading from the API, or when the backend
+    // hasn't yet returned the new field (cached conversations from before the
+    // backend was restarted will have donorUserId = 0).
+    const isDonor = !!activeConv && (
+        activeConv.donorUserId > 0 && profile?.userId != null && profile.userId > 0
+            ? profile.userId === activeConv.donorUserId
+            : isDonorRole
+    );
+
+    // The other participant's live location comes from SignalR (via context).
+    // 'ended' means they stopped sharing; key absent means never shared this session.
+    const remoteEntry   = activeConv ? liveLocations[activeConv.conversationId] : undefined;
+    const remoteLivePos = remoteEntry && remoteEntry !== 'ended' ? remoteEntry : null;
+    const locationEnded = remoteEntry === 'ended';
+
+    // Show the map when either participant is actively sharing.
+    const showMap = isSharing || remoteLivePos !== null;
+
+    // Stop sharing whenever the active conversation changes or the page unmounts.
+    useEffect(() => {
+        return () => {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+            const conv = activeConv;
+            if (conv && connRef.current?.state === HubConnectionState.Connected) {
+                connRef.current.invoke("StopSharingLocation", conv.conversationId).catch(() => {});
+            }
+            setIsSharing(false);
+            setLocalLivePos(null);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeConv?.conversationId]);
 
     // This page "owns" activeIdRef while it's mounted and a chat is open —
     // clear it on unmount so a message arriving after the user navigates away
@@ -157,6 +206,45 @@ export default function Conversations() {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSend();
+        }
+    }
+
+    // ── Location sharing (donor only) ─────────────────────────────────────────
+    function toggleSharing() {
+        const conn = connRef.current;
+        if (!activeConv || !conn) return;
+
+        if (isSharing) {
+            // Stop sharing
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+            conn.invoke("StopSharingLocation", activeConv.conversationId).catch(() => {});
+            setIsSharing(false);
+            setLocalLivePos(null);
+        } else {
+            // Start sharing
+            if (!("geolocation" in navigator)) {
+                setChatError("Geolocation is not available in this browser.");
+                return;
+            }
+            setIsSharing(true);
+            watchIdRef.current = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude: lat, longitude: lng } = pos.coords;
+                    setLocalLivePos({ lat, lng });
+                    if (conn.state === HubConnectionState.Connected) {
+                        conn.invoke("ShareLocation", activeConv.conversationId, lat, lng)
+                            .catch(() => {});
+                    }
+                },
+                () => {
+                    setChatError("Could not get your location. Please allow location access.");
+                    setIsSharing(false);
+                },
+                { enableHighAccuracy: true, timeout: 15000 },
+            );
         }
     }
 
@@ -275,8 +363,40 @@ export default function Conversations() {
                                     </div>
                                 </div>
                                 <div style={{ flex: 1 }} />
+                                {/* Location sharing button — visible to both participants */}
+                                <button
+                                    style={{
+                                        ...st.shareBtn,
+                                        background: isSharing ? "#dc2626" : "#2563eb",
+                                    }}
+                                    onClick={toggleSharing}
+                                    title={isSharing ? "Stop sharing your location" : "Share your live location"}
+                                >
+                                    {isSharing ? "⏹ Stop sharing" : "📍 Share location"}
+                                </button>
                                 <ConnectionDot status={connStatus} showLabel />
                             </div>
+
+                            {/* Live location map — shown when either participant is sharing */}
+                            {showMap && (
+                                <LiveLocationMap
+                                    postLat={activeConv.donationPostLatitude}
+                                    postLng={activeConv.donationPostLongitude}
+                                    requestLat={activeConv.donationRequestLatitude}
+                                    requestLng={activeConv.donationRequestLongitude}
+                                    myLat={localLivePos?.lat}
+                                    myLng={localLivePos?.lng}
+                                    theirLat={remoteLivePos?.latitude}
+                                    theirLng={remoteLivePos?.longitude}
+                                />
+                            )}
+
+                            {/* Location-ended notice — shown when other participant stopped sharing and neither is now active */}
+                            {locationEnded && !isSharing && (
+                                <div style={st.locationEndedBar}>
+                                    📍 The other participant stopped sharing their location.
+                                </div>
+                            )}
 
                             {/* Messages */}
                             <div style={st.messageArea}>
@@ -899,5 +1019,28 @@ const st = {
         fontFamily:   "inherit",
         flexShrink:   0,
         height:       42,
+    } as React.CSSProperties,
+
+    shareBtn: {
+        padding:      "7px 13px",
+        color:        "#fff",
+        border:       "none",
+        borderRadius: 8,
+        fontSize:     12,
+        fontWeight:   600,
+        cursor:       "pointer",
+        fontFamily:   "inherit",
+        flexShrink:   0,
+        transition:   "background 0.2s",
+    } as React.CSSProperties,
+
+    locationEndedBar: {
+        flexShrink:   0,
+        padding:      "8px 20px",
+        background:   "#f1f5f9",
+        fontSize:     12,
+        color:        "#64748b",
+        borderBottom: "1px solid #e2e8f0",
+        fontStyle:    "italic",
     } as React.CSSProperties,
 };

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import AppLayout, { page } from "../components/AppLayout.tsx";
 import { getMyDonationRequests, confirmMatch } from "../api/donationRequests";
 import { getCandidatesForRequest } from "../api/donationRequests";
@@ -60,18 +60,65 @@ export default function Candidates() {
     const [error,    setError]    = useState<string | null>(null);
     const [slots,    setSlots]    = useState<Record<number, Slot>>({});
 
+    const [searchParams] = useSearchParams();
+    const highlightId    = searchParams.get("highlight") ? Number(searchParams.get("highlight")) : null;
+
+    // Ref map so we can scroll the highlighted card into view once it renders.
+    const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
     useEffect(() => {
         getMyDonationRequests()
             .then(data => {
                 setRequests(data);
-                // Pre-init slot state for each request
                 const init: Record<number, Slot> = {};
                 data.forEach(r => { init[r.id] = emptySlot(); });
+
+                // If we arrived via ?highlight=, pre-open that request's slot
+                // and immediately kick off the candidate fetch so the user sees
+                // the candidates without having to click anything first.
+                if (highlightId) {
+                    init[highlightId] = { ...emptySlot(), expanded: true, loading: true };
+                }
                 setSlots(init);
+
+                // Fetch candidates for the highlighted request right after state settles.
+                if (highlightId) {
+                    const req = data.find(r => r.id === highlightId);
+                    if (req && req.status === DonationRequestStatus.Pending) {
+                        getCandidatesForRequest(highlightId)
+                            .then(result => {
+                                setSlots(prev => ({
+                                    ...prev,
+                                    [highlightId]: { ...prev[highlightId], candidates: result.candidates, loading: false },
+                                }));
+                            })
+                            .catch(err => {
+                                setSlots(prev => ({
+                                    ...prev,
+                                    [highlightId]: {
+                                        ...prev[highlightId],
+                                        loading: false,
+                                        error: err instanceof Error ? err.message : "Failed to load candidates.",
+                                    },
+                                }));
+                            });
+                    } else if (req) {
+                        // Request is not pending — just expand the header for visibility.
+                        init[highlightId] = { ...emptySlot(), expanded: false };
+                        setSlots(init);
+                    }
+                }
             })
             .catch(err => setError(err instanceof Error ? err.message : "Failed to load requests."))
             .finally(() => setLoading(false));
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Scroll the highlighted card into view once it's mounted.
+    useEffect(() => {
+        if (!highlightId || loading) return;
+        const el = cardRefs.current[highlightId];
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [loading, highlightId]);
 
     function patchSlot(id: number, patch: Partial<Slot>) {
         setSlots(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -187,8 +234,17 @@ export default function Candidates() {
                     const um    = urgencyMeta(req.urgency);
                     const isPending = req.status === DonationRequestStatus.Pending;
 
+                    const isHighlighted = req.id === highlightId;
+
                     return (
-                        <div key={req.id} style={st.requestCard}>
+                        <div
+                            key={req.id}
+                            ref={el => { cardRefs.current[req.id] = el; }}
+                            style={{
+                                ...st.requestCard,
+                                ...(isHighlighted ? st.requestCardHighlighted : {}),
+                            }}
+                        >
 
                             {/* ── Request header (always visible) ── */}
                             <button
@@ -412,6 +468,10 @@ const st = {
         borderRadius: 12,
         boxShadow:    "0 1px 4px rgba(0,0,0,0.06)",
         overflow:     "hidden",
+    },
+    requestCardHighlighted: {
+        boxShadow:  "0 0 0 2px #c62828, 0 4px 16px rgba(198,40,40,0.15)",
+        background: "#fffafa",
     },
     requestHeader: {
         display:    "flex",

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppLayout, { page } from "../components/AppLayout.tsx";
 import { useUser } from "../context/UserContext.tsx";
+import { useConversations } from "../context/useConversations.ts";
 import { getMyDonationRequests } from "../api/donationRequests";
 import { getMyDonationPosts } from "../api/donationPosts";
 import { bloodTypeNameStringToLabel } from "../utils/bloodTypes";
@@ -42,6 +43,7 @@ function urgencyMeta(u: DonationRequestUrgency) {
 
 export default function Dashboard() {
     const { profile, profileLoading, isDonor, isSeeker } = useUser();
+    const { conversations, unreadCount } = useConversations();
 
     const [requests,      setRequests]      = useState<DonationRequestViewModel[]>([]);
     const [posts,         setPosts]         = useState<DonationPostCandidateViewModel[]>([]);
@@ -65,9 +67,7 @@ export default function Dashboard() {
     }, [isDonor]);
 
     // Computed stats
-    const pendingCount   = requests.filter(r => r.status === DonationRequestStatus.Pending).length;
-    const matchedCount   = requests.filter(r => r.status === DonationRequestStatus.Matched
-                                             || r.status === DonationRequestStatus.Completed).length;
+    const pendingCount = requests.filter(r => r.status === DonationRequestStatus.Pending).length;
 
     const firstName = (profile?.name ?? "User").split(" ")[0];
 
@@ -135,17 +135,26 @@ export default function Dashboard() {
                 <section style={s.statsGrid}>
                     <StatCard icon="📋" value={requests.length} label="Total Requests" accent="#c62828" />
                     <StatCard icon="⏳" value={pendingCount}    label="Pending"        accent="#d97706" />
-                    <StatCard icon="✅" value={matchedCount}    label="Matched / Done" accent="#16a34a" />
                 </section>
             )}
 
             {/* ── Donor stats ── */}
             {isDonor && (
                 <section style={s.statsGrid}>
-                    {/* posts.length comes from GET /api/donationpost/get-current-user-donation-posts */}
-                    <StatCard icon="📌" value={posts.length} label="Donation Posts"  accent="#c62828" />
-                    {/* TODO: BACKEND – add active/inactive status to the my-posts response to split these */}
-                    <StatCard icon="💬" value={0}            label="Conversations"   accent="#7c3aed" />
+                    <StatCard icon="📌" value={posts.length} label="Donation Posts" accent="#c62828" />
+                </section>
+            )}
+
+            {/* ── Conversations stat — shown once for all roles ── */}
+            {(isDonor || isSeeker) && (
+                <section style={{ ...s.statsGrid, gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
+                    <StatCard
+                        icon="💬"
+                        value={conversations.length}
+                        label="Conversations"
+                        accent="#7c3aed"
+                        badge={unreadCount > 0 ? unreadCount : undefined}
+                    />
                 </section>
             )}
 
@@ -213,13 +222,36 @@ export default function Dashboard() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function StatCard({ icon, value, label, accent }: {
-    icon: string; value: number; label: string; accent: string;
+function StatCard({ icon, value, label, accent, badge }: {
+    icon: string; value: number; label: string; accent: string; badge?: number;
 }) {
     return (
         <div style={{ ...s.statCard, borderTopColor: accent }}>
-            <div style={{ ...s.statIcon, background: accent + "18" }}>
-                <span style={{ fontSize: 20 }}>{icon}</span>
+            <div style={{ position: "relative", display: "inline-flex" }}>
+                <div style={{ ...s.statIcon, background: accent + "18" }}>
+                    <span style={{ fontSize: 20 }}>{icon}</span>
+                </div>
+                {badge != null && (
+                    <span style={{
+                        position:     "absolute",
+                        top:          -4,
+                        right:        -4,
+                        minWidth:     18,
+                        height:       18,
+                        borderRadius: 99,
+                        background:   "#c62828",
+                        color:        "#fff",
+                        fontSize:     10,
+                        fontWeight:   700,
+                        display:      "flex",
+                        alignItems:   "center",
+                        justifyContent: "center",
+                        padding:      "0 4px",
+                        border:       "2px solid #fff",
+                    }}>
+                        {badge}
+                    </span>
+                )}
             </div>
             <div style={s.statValue}>{value}</div>
             <div style={s.statLabel}>{label}</div>

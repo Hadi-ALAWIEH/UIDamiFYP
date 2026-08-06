@@ -107,6 +107,8 @@ export interface DonationPostCandidateViewModel {
     donorUserId:    number;
     donorName:      string;
     donorAddress:   string;
+    latitude?:      number;
+    longitude?:     number;
     bloodTypeName:  string | null;  // enum name string from backend
     quantity?:      number;
     // True when this donor has already been confirmed as a match for the
@@ -138,8 +140,13 @@ export interface ConversationViewModel {
     matchCreatedAt:               string;
     donationRequestBloodTypeName: string;
     donationRequestQuantity?:     number;
+    donationRequestLatitude?:     number;
+    donationRequestLongitude?:    number;
     donationPostBloodTypeName:    string;
     donationPostQuantity?:        number;
+    donationPostLatitude?:        number;
+    donationPostLongitude?:       number;
+    donorUserId:                  number;
     otherUserId:                  number;
     otherUserName:                string;
     otherUserEmail:               string;
@@ -170,6 +177,30 @@ export interface MessageViewModel {
     content:        string;
     sentAt:         string;  // ISO 8601 UTC
     isRead:         boolean;
+}
+
+// Pushed over SignalR ("LocationUpdate") to the conversation group by ShareLocation().
+// The seeker receives this to update the live-tracking map; the donor never
+// receives it back (OthersInGroup excludes the sender).
+export interface LocationUpdate {
+    conversationId: number;
+    latitude:       number;
+    longitude:      number;
+    senderUserId:   number;
+}
+
+// Pushed to the seeker's personal SignalR group ("user-{id}") when a donor
+// creates a post that satisfies one of their pending requests.
+export interface DonationPostMatchNotification {
+    donationPostId:    number;
+    donationRequestId: number;
+    donorUserId:       number;
+    donorName:         string;
+    bloodTypeName?:    string;
+    quantity?:         number;
+    donorAddress?:     string;
+    donorLatitude?:    number;
+    donorLongitude?:   number;
 }
 
 // Pushed to user's personal SignalR group ("user-{id}") when a match is confirmed

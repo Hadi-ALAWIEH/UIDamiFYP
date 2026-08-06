@@ -59,6 +59,28 @@ function LocationMarker({
     );
 }
 
+// ── Candidate mini-map ─────────────────────────────────────────────────────
+// Read-only thumbnail for a donor's pinned location.
+function CandidateMiniMap({ lat, lng }: { lat: number; lng: number }) {
+    const pos: [number, number] = [lat, lng];
+    return (
+        <MapContainer
+            center={pos}
+            zoom={14}
+            style={{ height: 120, width: 190 }}
+            dragging={false}
+            zoomControl={false}
+            scrollWheelZoom={false}
+            doubleClickZoom={false}
+            touchZoom={false}
+            attributionControl={false}
+        >
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <Marker position={pos} />
+        </MapContainer>
+    );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string) {
@@ -529,37 +551,116 @@ export default function MyRequests() {
 
             {/* ── Candidates panel ── */}
             {candidates && candidates.list.length > 0 && (
-                <div style={{ ...page.card, marginBottom: 24, borderLeft: "3px solid #c62828" }}>
-                    <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 600, color: "#1e293b" }}>
-                        Matching Donors Found!
-                    </h3>
-                    <p style={{ margin: "0 0 14px", fontSize: 13, color: "#64748b" }}>
-                        Select a donor to confirm the match. A conversation will open automatically.
-                    </p>
-                    <div style={s.candidateList}>
-                        {candidates.list.map(c => (
-                            <div key={c.donationPostId} style={s.candidateRow}>
-                                <div style={page.bloodCircle}>{bloodTypeNameStringToLabel(c.bloodTypeName)}</div>
-                                <div style={{ flex: 1 }}>
-                                    {/* TODO: BACKEND – donorName comes from DonationPostCandidateViewModel */}
-                                    <div style={s.candidateName}>{c.donorName}</div>
-                                    <div style={{ fontSize: 12, color: "#64748b" }}>
-                                        {c.donorAddress ?? "No address"} · {c.quantity ?? "?"} unit(s)
-                                    </div>
-                                </div>
-                                <button
-                                    style={{ ...page.primaryBtn, opacity: confirming === c.donationPostId ? 0.7 : 1 }}
-                                    onClick={() => handleConfirmMatch(c.donationPostId)}
-                                    disabled={confirming !== null}
-                                >
-                                    {confirming === c.donationPostId ? "Confirming…" : "Confirm Match"}
-                                </button>
+                <div style={s.candidatesPanel}>
+
+                    {/* Panel header */}
+                    <div style={s.candidatesHeader}>
+                        <div style={s.candidatesHeaderIcon}>🩸</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={s.candidatesTitle}>
+                                {candidates.list.length} Matching Donor{candidates.list.length !== 1 ? "s" : ""} Found
                             </div>
-                        ))}
+                            <div style={s.candidatesSubtitle}>
+                                Review the donors below and confirm one to open a conversation.
+                            </div>
+                        </div>
+                        <button
+                            style={s.dismissBtn}
+                            onClick={() => setCandidates(null)}
+                            title="Dismiss"
+                        >
+                            ✕
+                        </button>
                     </div>
-                    <button style={{ ...page.secondaryBtn, marginTop: 12 }} onClick={() => setCandidates(null)}>
-                        Dismiss
-                    </button>
+
+                    {/* Candidate cards */}
+                    <div style={s.candidateList}>
+                        {candidates.list.map(c => {
+                            const bloodLabel = bloodTypeNameStringToLabel(c.bloodTypeName);
+                            const hasLocation = c.latitude != null && c.longitude != null;
+                            return (
+                                <div key={c.donationPostId} style={s.candidateCard}>
+
+                                    {/* Left: donor info */}
+                                    <div style={s.candidateInfo}>
+
+                                        {/* Avatar + name row */}
+                                        <div style={s.candidateNameRow}>
+                                            <div style={s.candidateAvatar}>
+                                                {c.donorName.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <div style={s.candidateName}>{c.donorName}</div>
+                                                <div style={s.candidateDonorBadge}>Blood Donor</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Blood type + quantity badges */}
+                                        <div style={s.candidateBadges}>
+                                            <span style={s.bloodBadge}>{bloodLabel}</span>
+                                            <span style={s.quantityBadge}>
+                                                {c.quantity ?? "?"} unit{(c.quantity ?? 0) !== 1 ? "s" : ""} available
+                                            </span>
+                                        </div>
+
+                                        {/* Address */}
+                                        {c.donorAddress && (
+                                            <div style={s.candidateAddress}>
+                                                <span style={{ opacity: 0.7 }}>📍</span>
+                                                {c.donorAddress}
+                                            </div>
+                                        )}
+                                        {!c.donorAddress && !hasLocation && (
+                                            <div style={{ ...s.candidateAddress, fontStyle: "italic", opacity: 0.5 }}>
+                                                No address provided
+                                            </div>
+                                        )}
+
+                                        {/* Google Maps link (text-only if no map) */}
+                                        {hasLocation && (
+                                            <a
+                                                href={`https://www.google.com/maps?q=${c.latitude},${c.longitude}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={s.gmapsLink}
+                                            >
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                                    <polyline points="15 3 21 3 21 9"/>
+                                                    <line x1="10" y1="14" x2="21" y2="3"/>
+                                                </svg>
+                                                View on Google Maps
+                                            </a>
+                                        )}
+
+                                        {/* Confirm button */}
+                                        <button
+                                            style={{
+                                                ...s.confirmBtn,
+                                                opacity: confirming !== null ? 0.65 : 1,
+                                                cursor:  confirming !== null ? "not-allowed" : "pointer",
+                                            }}
+                                            onClick={() => handleConfirmMatch(c.donationPostId)}
+                                            disabled={confirming !== null}
+                                        >
+                                            {confirming === c.donationPostId
+                                                ? "Confirming…"
+                                                : "Confirm Match →"}
+                                        </button>
+                                    </div>
+
+                                    {/* Right: mini-map thumbnail */}
+                                    {hasLocation && (
+                                        <div style={s.candidateMapWrap}>
+                                            <CandidateMiniMap lat={c.latitude!} lng={c.longitude!} />
+                                        </div>
+                                    )}
+
+                                </div>
+                            );
+                        })}
+                    </div>
+
                 </div>
             )}
 
@@ -675,26 +776,171 @@ const s = {
         gap:        8,
         flexShrink: 0,
     },
+    // ── Candidates panel ────────────────────────────────────────────────────
+    candidatesPanel: {
+        marginBottom:  24,
+        background:    "#fff",
+        borderRadius:  14,
+        border:        "1px solid #fecaca",
+        borderLeft:    "4px solid #c62828",
+        boxShadow:     "0 4px 20px rgba(198,40,40,0.08)",
+        overflow:      "hidden",
+    } as React.CSSProperties,
+    candidatesHeader: {
+        display:     "flex",
+        alignItems:  "flex-start",
+        gap:         12,
+        padding:     "16px 20px",
+        background:  "linear-gradient(90deg, #fef2f2 0%, #fff 100%)",
+        borderBottom:"1px solid #fce7e7",
+    } as React.CSSProperties,
+    candidatesHeaderIcon: {
+        fontSize:   22,
+        flexShrink: 0,
+        marginTop:  1,
+    } as React.CSSProperties,
+    candidatesTitle: {
+        fontSize:   15,
+        fontWeight: 700,
+        color:      "#991b1b",
+        marginBottom: 2,
+    } as React.CSSProperties,
+    candidatesSubtitle: {
+        fontSize: 13,
+        color:    "#64748b",
+    } as React.CSSProperties,
+    dismissBtn: {
+        background:   "none",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 6,
+        width:        28,
+        height:       28,
+        fontSize:     13,
+        cursor:       "pointer",
+        color:        "#94a3b8",
+        display:      "flex",
+        alignItems:   "center",
+        justifyContent: "center",
+        flexShrink:   0,
+    } as React.CSSProperties,
     candidateList: {
         display:       "flex",
         flexDirection: "column" as const,
+        gap:           0,
+    } as React.CSSProperties,
+    candidateCard: {
+        display:     "flex",
+        alignItems:  "flex-start",
+        gap:         16,
+        padding:     "18px 20px",
+        borderBottom:"1px solid #f1f5f9",
+    } as React.CSSProperties,
+    candidateInfo: {
+        flex:          1,
+        display:       "flex",
+        flexDirection: "column" as const,
         gap:           10,
-    },
-    candidateRow: {
-        display:      "flex",
-        alignItems:   "center",
-        gap:          12,
-        padding:      "12px",
-        background:   "#f8fafc",
-        borderRadius: 8,
-        border:       "1px solid #e2e8f0",
-    },
+        minWidth:      0,
+    } as React.CSSProperties,
+    candidateNameRow: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        10,
+    } as React.CSSProperties,
+    candidateAvatar: {
+        width:          40,
+        height:         40,
+        borderRadius:   "50%",
+        background:     "linear-gradient(135deg, #c62828 0%, #ef4444 100%)",
+        color:          "#fff",
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "center",
+        fontWeight:     700,
+        fontSize:       16,
+        flexShrink:     0,
+        boxShadow:      "0 2px 8px rgba(198,40,40,0.3)",
+    } as React.CSSProperties,
     candidateName: {
-        fontWeight:   600,
-        fontSize:     14,
+        fontWeight:   700,
+        fontSize:     15,
         color:        "#1e293b",
-        marginBottom: 2,
-    },
+        lineHeight:   "1.2",
+    } as React.CSSProperties,
+    candidateDonorBadge: {
+        fontSize:      10,
+        fontWeight:    700,
+        color:         "#991b1b",
+        textTransform: "uppercase" as const,
+        letterSpacing: "0.5px",
+        marginTop:     2,
+    } as React.CSSProperties,
+    candidateBadges: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        8,
+        flexWrap:   "wrap" as const,
+    } as React.CSSProperties,
+    bloodBadge: {
+        fontSize:     13,
+        fontWeight:   800,
+        color:        "#991b1b",
+        background:   "#fee2e2",
+        border:       "1.5px solid #fecaca",
+        borderRadius: 8,
+        padding:      "3px 12px",
+    } as React.CSSProperties,
+    quantityBadge: {
+        fontSize:     12,
+        fontWeight:   600,
+        color:        "#1e40af",
+        background:   "#dbeafe",
+        border:       "1px solid #bfdbfe",
+        borderRadius: 8,
+        padding:      "3px 10px",
+    } as React.CSSProperties,
+    candidateAddress: {
+        display:    "flex",
+        alignItems: "flex-start",
+        gap:        5,
+        fontSize:   13,
+        color:      "#475569",
+        lineHeight: "1.4",
+    } as React.CSSProperties,
+    gmapsLink: {
+        display:        "inline-flex",
+        alignItems:     "center",
+        gap:            5,
+        fontSize:       12,
+        fontWeight:     600,
+        color:          "#4285f4",
+        textDecoration: "none",
+        width:          "fit-content",
+    } as React.CSSProperties,
+    confirmBtn: {
+        alignSelf:    "flex-start" as const,
+        marginTop:    4,
+        padding:      "9px 20px",
+        background:   "linear-gradient(135deg, #c62828 0%, #dc2626 100%)",
+        color:        "#fff",
+        border:       "none",
+        borderRadius: 9,
+        fontSize:     13,
+        fontWeight:   700,
+        fontFamily:   "inherit",
+        boxShadow:    "0 2px 8px rgba(198,40,40,0.25)",
+        letterSpacing:"0.01em",
+    } as React.CSSProperties,
+    candidateMapWrap: {
+        flexShrink:   0,
+        width:        190,
+        height:       120,
+        borderRadius: 10,
+        overflow:     "hidden",
+        border:       "1px solid #e2e8f0",
+        boxShadow:    "0 2px 8px rgba(0,0,0,0.08)",
+        alignSelf:    "center" as const,
+    } as React.CSSProperties,
 
     // Location picker
     locRow: {

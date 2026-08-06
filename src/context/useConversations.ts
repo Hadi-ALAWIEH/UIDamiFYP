@@ -1,6 +1,6 @@
 import { createContext, useContext, type MutableRefObject } from "react";
 import type { HubConnection } from "@microsoft/signalr";
-import type { ConversationViewModel, MessageViewModel } from "../types";
+import type { ConversationViewModel, DonationPostMatchNotification, LocationUpdate, MessageViewModel } from "../types";
 
 // This file intentionally exports NO React components — only a plain
 // Context object, a type, and a hook. Vite's Fast Refresh can only safely
@@ -22,10 +22,16 @@ export interface ConversationsContextValue {
     // Every message received via SignalR, most recent last — the Conversations
     // page watches this to append new messages to whichever chat is open.
     latestMessage:         MessageViewModel | null;
-    unreadCount:           number;
-    isUnread:              (conv: ConversationViewModel) => boolean;
-    markConversationSeen:  (conversationId: number, at?: string) => void;
-    reload:                () => void;
+    unreadCount:              number;
+    isUnread:                 (conv: ConversationViewModel) => boolean;
+    markConversationSeen:     (conversationId: number, at?: string) => void;
+    reload:                   () => void;
+    // Set when the backend pushes a DonationPostMatch event; cleared by the toast.
+    pendingMatchNotification: DonationPostMatchNotification | null;
+    clearMatchNotification:   () => void;
+    // Live location per conversation. Value is the latest update while sharing,
+    // or 'ended' once the donor stops. Key absent = never shared this session.
+    liveLocations: Record<number, LocationUpdate | 'ended'>;
 }
 
 export const ConversationsContext = createContext<ConversationsContextValue | null>(null);
