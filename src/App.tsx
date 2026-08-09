@@ -1,8 +1,9 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { UserProvider, useUser } from "./context/UserContext.tsx";
 import { ConversationsProvider } from "./context/ConversationsContext.tsx";
 import DonationMatchToast from "./components/DonationMatchToast.tsx";
 import Onboarding       from "./pages/Onboarding.tsx";
+import VerifyIdentity     from "./pages/VerifyIdentity.tsx";
 import Dashboard        from "./pages/Dashboard.tsx";
 import MyRequests       from "./pages/MyRequests.tsx";
 import MyPosts          from "./pages/MyPosts.tsx";
@@ -12,6 +13,22 @@ import AskBot             from "./pages/AskBot.tsx";
 import BloodAvailability  from "./pages/BloodAvailability.tsx";
 import Candidates         from "./pages/Candidates.tsx";
 import type {JSX} from "react";
+
+// ── Onboarding/verification gate ────────────────────────────────────────────
+//
+// profileCompleted now means "base profile saved AND identity verification
+// passed" (see CheckProfileExistenceQueryHandler / Onboarding.tsx). Previously
+// only the "/" redirect below checked this flag - every other route
+// (/dashboard, /requests, ...) had no gating at all, so a user could type
+// /dashboard directly and skip onboarding/verification entirely. This layout
+// route closes that gap: every route nested under it requires the flag,
+// bouncing back to /onboarding otherwise. /onboarding and /verify-identity
+// themselves stay outside it, since they're the only way TO become completed.
+function RequireCompletedProfile() {
+    const profileCompleted =
+        sessionStorage.getItem("profileCompleted") === "true";
+    return profileCompleted ? <Outlet /> : <Navigate to="/onboarding" replace />;
+}
 
 // ── Role-based route guards ────────────────────────────────────────────────
 
@@ -44,58 +61,72 @@ function AppRoutes() {
                 }
             />
 
-            {/* Onboarding — accessible when profile is not yet complete */}
+            {/* Onboarding — accessible when profile is not yet complete.
+                Covers both the base-info form and, once that's saved, the
+                identity verification step (see Onboarding.tsx's own
+                "form" | "verify" phases). Deliberately NOT behind
+                RequireCompletedProfile - it's how the flag gets set. */}
             <Route path="/onboarding" element={<Onboarding />} />
 
-            {/* ── Authenticated app pages ── */}
+            {/* Identity verification capture flow — navigated to from
+                Onboarding's "Verify Identity" button, navigates back to
+                /onboarding on success or cancel. Same reasoning as above:
+                not behind the completed-profile gate. */}
+            <Route path="/verify-identity" element={<VerifyIdentity />} />
 
-            <Route path="/dashboard" element={<Dashboard />} />
+            {/* ── Authenticated app pages — all require a completed AND
+                verified profile ── */}
+            <Route element={<RequireCompletedProfile />}>
 
-            {/* Seeker-only pages */}
-            <Route
-                path="/requests"
-                element={
-                    <RequireSeeker><MyRequests /></RequireSeeker>
-                }
-            />
+                <Route path="/dashboard" element={<Dashboard />} />
 
-            {/* Donor-only pages */}
-            <Route
-                path="/posts"
-                element={
-                    <RequireDonor><MyPosts /></RequireDonor>
-                }
-            />
-            <Route
-                path="/available-requests"
-                element={
-                    <RequireDonor><AvailableRequests /></RequireDonor>
-                }
-            />
+                {/* Seeker-only pages */}
+                <Route
+                    path="/requests"
+                    element={
+                        <RequireSeeker><MyRequests /></RequireSeeker>
+                    }
+                />
 
-            <Route
-                path="/candidates"
-                element={
-                    <RequireSeeker><Candidates /></RequireSeeker>
-                }
-            />
+                {/* Donor-only pages */}
+                <Route
+                    path="/posts"
+                    element={
+                        <RequireDonor><MyPosts /></RequireDonor>
+                    }
+                />
+                <Route
+                    path="/available-requests"
+                    element={
+                        <RequireDonor><AvailableRequests /></RequireDonor>
+                    }
+                />
 
-            {/* Seeker-only — requires CanViewBloodAvailabilityPredictions */}
-            <Route
-                path="/predict"
-                element={
-                    <RequireSeeker><BloodAvailability /></RequireSeeker>
-                }
-            />
+                <Route
+                    path="/candidates"
+                    element={
+                        <RequireSeeker><Candidates /></RequireSeeker>
+                    }
+                />
 
-            {/* All authenticated users */}
-            <Route path="/conversations" element={<Conversations />} />
+                {/* Seeker-only — requires CanViewBloodAvailabilityPredictions */}
+                <Route
+                    path="/predict"
+                    element={
+                        <RequireSeeker><BloodAvailability /></RequireSeeker>
+                    }
+                />
 
-            {/* Independent of Conversations — see DamiFYP.Application.Features.BotAssistant */}
-            <Route path="/ask-bot" element={<AskBot />} />
+                {/* All authenticated users */}
+                <Route path="/conversations" element={<Conversations />} />
 
-            {/* TODO: Add a /profile page for viewing/editing user details */}
-            {/* TODO: Add a /conversations/:id page for individual chat view */}
+                {/* Independent of Conversations — see DamiFYP.Application.Features.BotAssistant */}
+                <Route path="/ask-bot" element={<AskBot />} />
+
+                {/* TODO: Add a /profile page for viewing/editing user details */}
+                {/* TODO: Add a /conversations/:id page for individual chat view */}
+
+            </Route>
 
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/" replace />} />

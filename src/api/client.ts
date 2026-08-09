@@ -10,7 +10,6 @@ export function authHeader(): Record<string, string> {
 
 // @ts-ignore
 export class ApiError extends Error {
-    // @ts-expect-error
     constructor(
         public readonly status: number,
         message: string,

@@ -7,9 +7,10 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { completeUserOnboarding } from "../api/profile";
+import { getVerificationStatus } from "../api/verification";
 import { logout } from "../auth/Keycloak.ts";
 import { useUser } from "../context/UserContext.tsx";
-import { BusinessRole } from "../types";
+import { BusinessRole, VerificationStatus } from "../types";
 
 // Leaflet's default marker icon paths break under Vite's bundling — point
 // them at the bundled asset URLs explicitly. This only needs to run once.
@@ -67,7 +68,7 @@ function LocationMarker({
 
 export default function Onboarding() {
     const navigate    = useNavigate();
-    const { setProfile } = useUser();
+    const { setProfile, profile, profileLoading, refreshProfile } = useUser();
 
     const [name,         setName]         = useState("");
     const [businessRole, setBusinessRole] = useState<BusinessRole>(BusinessRole.Seeker);
@@ -95,6 +96,57 @@ export default function Onboarding() {
         () => [latitude ?? DEFAULT_CENTER[0], longitude ?? DEFAULT_CENTER[1]],
         [latitude, longitude]
     );
+
+    // Re-fetch the current profile every time this page is (re)mounted -
+    // including when the user is routed back here from /verify-identity.
+    // UserProvider only fetches once on the very first app load, so without
+    // this the "did verification just pass?" check below would run against
+    // stale data after navigating back.
+    useEffect(() => {
+        refreshProfile();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // profileCompleted (and therefore access to the rest of the app) now
+    // requires BOTH the base fields being saved AND identity verification
+    // having passed - see CheckProfileExistenceQueryHandler. This effect is
+    // what actually finalizes that: it fires either right after returning
+    // from a successful /verify-identity attempt, or if an already-fully-
+    // verified user lands on /onboarding directly (e.g. a stale bookmark).
+    useEffect(() => {
+        if (profileLoading || !profile) return;
+        if (profile.name !== "Pending Profile" && profile.verificationStatus === VerificationStatus.Verified) {
+            sessionStorage.setItem("profileCompleted", "true");
+            navigate("/dashboard", { replace: true });
+        }
+    }, [profile, profileLoading, navigate]);
+
+    // Which section of the page to show: the base-info form, or - once
+    // that's saved - the identity verification step. Purely derived from
+    // the current profile, no separate local "step" state to keep in sync.
+    const phase: "loading" | "form" | "verify" =
+        profileLoading || !profile
+            ? "loading"
+            : profile.name === "Pending Profile"
+                ? "form"
+                : "verify";
+
+    // How many verification attempts the user has used so far - fetched
+    // separately from `profile` since GetUserProfile doesn't carry it. Only
+    // needed once we're actually showing the verify phase, and re-fetched
+    // every time we land back on it (e.g. returning from a failed attempt on
+    // /verify-identity). Purely informational now - there's no cap, so
+    // nothing here ever blocks retrying.
+    const [attemptCount, setAttemptCount] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (phase !== "verify") return;
+        let cancelled = false;
+        getVerificationStatus()
+            .then(res => { if (!cancelled) setAttemptCount(res.attemptCount); })
+            .catch(() => { /* non-critical - the "verify" screen still works without it */ });
+        return () => { cancelled = true; };
+    }, [phase]);
 
     // Re-measure the map after the container resizes (maximize/restore),
     // otherwise Leaflet keeps rendering at its old size/tile positions.
@@ -212,7 +264,13 @@ export default function Onboarding() {
             // POST /api/CompleteOnboarding
             // The response is stored in UserContext (sessionStorage) so the
             // dashboard and other pages can read the user's name and role.
-            const profile = await completeUserOnboarding({
+            //
+            // NOTE: this intentionally does NOT set profileCompleted or
+            // navigate anywhere anymore - profileCompleted now also requires
+            // identity verification (see CheckProfileExistenceQueryHandler),
+            // so saving the base fields just reveals the verification step
+            // below instead of finishing onboarding outright.
+            const saved = await completeUserOnboarding({
                 name:         name.trim(),
                 businessRole,
                 latitude,
@@ -220,15 +278,65 @@ export default function Onboarding() {
                 isAvailable,
             });
 
-            setProfile(profile);
-            sessionStorage.setItem("profileCompleted", "true");
-            navigate("/dashboard");
+            setProfile(saved);
+            // Pulls the full profile (including verificationStatus, which
+            // CompleteOnboarding's own response doesn't carry) so `phase`
+            // above immediately flips to "verify".
+            await refreshProfile();
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : "Something went wrong.";
             setError(msg);
         } finally {
             setLoading(false);
         }
+    }
+
+    if (phase === "loading") {
+        return (
+            <div style={s.page}>
+                <div style={s.card}>
+                    <div style={s.iconCircle}>🩸</div>
+                    <p style={s.subtitle}>Loading your profile…</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (phase === "verify") {
+        const lastAttemptFailed = profile?.verificationStatus === VerificationStatus.Failed;
+
+        return (
+            <div style={s.page}>
+                <div style={s.card}>
+                    <div style={s.iconCircle}>🪪</div>
+                    <h1 style={s.title}>One Last Step</h1>
+
+                    <p style={s.subtitle}>
+                        Thanks{profile?.name ? `, ${profile.name}` : ""} — your profile info is
+                        saved. Before you can start using DamiFYP, we need to quickly confirm
+                        a real person is behind this account.
+                    </p>
+
+                    {lastAttemptFailed && (
+                        <div style={s.errorBox}>
+                            Your last verification attempt didn't pass — let's try again.
+                            {attemptCount !== null && ` (attempt ${attemptCount} so far)`}
+                        </div>
+                    )}
+
+                    <button
+                        style={s.submitBtn}
+                        onClick={() => navigate("/verify-identity")}
+                    >
+                        Verify Identity
+                    </button>
+
+                    <button style={s.logoutLink} onClick={logout}>
+                        Sign out
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -433,7 +541,7 @@ export default function Onboarding() {
                     onClick={handleSubmit}
                     disabled={loading}
                 >
-                    {loading ? "Setting up your profile…" : "Complete Profile"}
+                    {loading ? "Saving…" : "Save & Continue"}
                 </button>
 
                 <button style={s.logoutLink} onClick={logout}>

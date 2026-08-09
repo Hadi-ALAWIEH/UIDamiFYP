@@ -17,8 +17,12 @@ export function bloodTypeLabel(value: BloodTypeName): string {
 }
 
 // Convert the backend enum name string (e.g. "OPositive") to display label
-// Used when the backend sends the enum as a string instead of an integer
-export function bloodTypeNameStringToLabel(name: string): string {
+// Used when the backend sends the enum as a string instead of an integer.
+// Accepts null since DonationRequestViewModel.bloodTypeName and
+// DonationPostCandidateViewModel.bloodTypeName are both nullable - falls
+// back to "Unknown", same convention as bloodTypeLabel() above.
+export function bloodTypeNameStringToLabel(name: string | null): string {
+    if (!name) return "Unknown";
     const map: Record<string, string> = {
         APositive:  "A+",
         ANegative:  "A-",
