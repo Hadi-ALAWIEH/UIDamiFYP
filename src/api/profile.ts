@@ -1,5 +1,6 @@
 import { apiFetch } from "./client";
 import type { UserProfileData } from "../types";
+import { keycloak } from "../auth/Keycloak";
 
 export interface CompleteOnboardingPayload {
     name:          string;
@@ -32,4 +33,20 @@ export async function checkProfileExistence(): Promise<{ completed: boolean }> {
 // The businessRole comes back as an integer; bloodTypeName as a string ("APositive" etc.).
 export async function getUserProfile(): Promise<UserProfileData> {
     return apiFetch<UserProfileData>("/api/GetUserProfile");
+}
+
+// PUT /api/UpdateProfile (multipart/form-data)
+// Must NOT set Content-Type — the browser sets it with the multipart boundary.
+export async function updateUserProfile(formData: FormData): Promise<UserProfileData> {
+    const base = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
+    const res = await fetch(`${base}/api/UpdateProfile`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${keycloak.token}` },
+        body: formData,
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json();
 }

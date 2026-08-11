@@ -30,6 +30,7 @@ L.Icon.Default.mergeOptions({
 });
 
 const DEFAULT_CENTER: [number, number] = [33.8938, 35.5018];
+const API_BASE = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
 
 type LocationStatus = "idle" | "requesting" | "set" | "denied" | "error";
 type SearchResult   = { display_name: string; lat: string; lon: string };
@@ -586,9 +587,17 @@ export default function MyRequests() {
 
                                         {/* Avatar + name row */}
                                         <div style={s.candidateNameRow}>
-                                            <div style={s.candidateAvatar}>
-                                                {c.donorName.charAt(0).toUpperCase()}
-                                            </div>
+                                            {c.donorProfilePictureUrl ? (
+                                                <img
+                                                    src={`${API_BASE}${c.donorProfilePictureUrl}`}
+                                                    alt={c.donorName}
+                                                    style={{ ...s.candidateAvatar, objectFit: "cover" as const }}
+                                                />
+                                            ) : (
+                                                <div style={s.candidateAvatar}>
+                                                    {c.donorName.charAt(0).toUpperCase()}
+                                                </div>
+                                            )}
                                             <div>
                                                 <div style={s.candidateName}>{c.donorName}</div>
                                                 <div style={s.candidateDonorBadge}>Blood Donor</div>

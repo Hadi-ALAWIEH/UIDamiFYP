@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { HubConnectionState } from "@microsoft/signalr";
 import AppLayout from "../components/AppLayout.tsx";
@@ -33,6 +33,22 @@ function fmtFull(iso: string): string {
 
 function bloodLabel(name: string | null | undefined): string {
     return name ? bloodTypeNameStringToLabel(name) : "?";
+}
+
+const apiBase = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
+
+function otherAvatar(conv: ConversationViewModel, style: React.CSSProperties, imgStyle?: React.CSSProperties) {
+    const url = conv.otherUserProfilePictureUrl ? `${apiBase}${conv.otherUserProfilePictureUrl}` : null;
+    if (url) {
+        return (
+            <img
+                src={url}
+                alt={conv.otherUserName}
+                style={{ ...style, objectFit: "cover", padding: 0, background: "transparent", ...imgStyle }}
+            />
+        );
+    }
+    return <div style={style}>{conv.otherUserName.charAt(0).toUpperCase()}</div>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -288,13 +304,11 @@ export default function Conversations() {
                                     }}
                                     onClick={() => openConversation(conv)}
                                 >
-                                    <div style={{
+                                    {otherAvatar(conv, {
                                         ...st.convAvatar,
                                         background: isActive ? "#c62828" : "#fee2e2",
                                         color:      isActive ? "#fff"    : "#991b1b",
-                                    }}>
-                                        {conv.otherUserName.charAt(0).toUpperCase()}
-                                    </div>
+                                    })}
 
                                     <div style={st.convBody}>
                                         <div style={{
@@ -342,9 +356,7 @@ export default function Conversations() {
                         <>
                             {/* Chat header */}
                             <div style={st.chatHeader}>
-                                <div style={st.chatHeaderAvatar}>
-                                    {activeConv.otherUserName.charAt(0).toUpperCase()}
-                                </div>
+                                {otherAvatar(activeConv, st.chatHeaderAvatar)}
                                 <div>
                                     <div style={st.chatHeaderName}>
                                         {activeConv.otherUserName}
@@ -425,11 +437,7 @@ export default function Conversations() {
                                                 justifyContent: isOther ? "flex-start" : "flex-end",
                                             }}
                                         >
-                                            {isOther && (
-                                                <div style={st.msgAvatarSm}>
-                                                    {activeConv.otherUserName.charAt(0).toUpperCase()}
-                                                </div>
-                                            )}
+                                            {isOther && otherAvatar(activeConv, st.msgAvatarSm)}
                                             <div
                                                 style={{
                                                     ...st.bubble,

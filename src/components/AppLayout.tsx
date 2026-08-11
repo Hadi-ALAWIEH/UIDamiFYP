@@ -25,6 +25,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const displayName = profile?.name ?? "User";
     const roleBadge   = getRoleBadgeStyle(profile?.businessRole ?? 0);
     const roleLabel   = getRoleLabel(profile?.businessRole ?? 0);
+    const apiBase     = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
+    const avatarUrl   = profile?.profilePictureUrl
+        ? `${apiBase}${profile.profilePictureUrl}`
+        : null;
 
     // The `show` flag gates items by role so only relevant pages appear.
     // Blood Availability requires CanViewBloodAvailabilityPredictions (Seeker, ManageAccount).
@@ -37,6 +41,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { icon: "🔍", label: "Available Requests",    to: "/available-requests", show: isDonor   },
         { icon: "💬", label: "Conversations",         to: "/conversations",      show: true, badge: unreadCount },
         { icon: "🤖", label: "Ask our bot",           to: "/ask-bot",            show: true      },
+        { icon: "⚙️", label: "Account Settings",      to: "/account",            show: true      },
     ];
 
     function handleLogout() {
@@ -58,9 +63,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                 {/* User card */}
                 <div style={s.userCard}>
-                    <div style={s.avatar}>
-                        {displayName.charAt(0).toUpperCase()}
-                    </div>
+                    {avatarUrl ? (
+                        <img
+                            src={avatarUrl}
+                            alt={displayName}
+                            style={s.avatarImg}
+                        />
+                    ) : (
+                        <div style={s.avatar}>
+                            {displayName.charAt(0).toUpperCase()}
+                        </div>
+                    )}
                     <div style={s.userInfo}>
                         <div style={s.userName}>{displayName}</div>
                         <span style={{ ...s.rolePill, ...roleBadge }}>{roleLabel}</span>
@@ -169,6 +182,14 @@ const s = {
         fontWeight:     700,
         fontSize:       16,
         flexShrink:     0,
+    },
+    avatarImg: {
+        width:        38,
+        height:       38,
+        borderRadius: "50%",
+        border:       "2px solid rgba(255,255,255,0.25)",
+        objectFit:    "cover" as const,
+        flexShrink:   0,
     },
     userInfo: {
         display:       "flex",

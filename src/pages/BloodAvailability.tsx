@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import AppLayout, { page } from "../components/AppLayout.tsx";
 import {
-    getBloodAvailabilityMetadata,
-    predictAvailability,
-    BLOOD_TYPE_LABEL_TO_ENUM,
-    type BloodAvailabilityMetadata,
-    type PredictionPayload,
-    type PredictionResult,
+        getBloodAvailabilityMetadata,
+        predictAvailability,
+        BLOOD_TYPE_LABEL_TO_ENUM,
+        type BloodAvailabilityMetadata,
+        type PredictionPayload,
+        type PredictionResult,
 } from "../api/bloodAvailability";
 
 // ── Visual helpers ───────────────────────────────────────────────────────────

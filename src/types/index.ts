@@ -68,6 +68,7 @@ export interface UserProfileData {
     // Only present on GET /api/GetUserProfile - CompleteOnboarding's response
     // predates the verification step and doesn't carry it.
     verificationStatus?: VerificationStatus;
+    profilePictureUrl?: string | null;
 }
 
 // Returned by GET /api/verification/status (VerificationStatusViewModel)
@@ -114,7 +115,8 @@ export interface DonationPostCandidateViewModel {
     // True when this donor has already been confirmed as a match for the
     // request this candidate list was fetched for — persisted server-side,
     // so it survives page reloads (unlike a purely local "just confirmed" flag).
-    isMatched?:     boolean;
+    isMatched?:             boolean;
+    donorProfilePictureUrl?: string | null;
 }
 
 // Returned by POST /api/donationrequest and GET /api/donationpost/get-candidates-{id}
@@ -151,6 +153,7 @@ export interface ConversationViewModel {
     otherUserName:                string;
     otherUserEmail:               string;
     otherUserRole:                BusinessRole;
+    otherUserProfilePictureUrl?:  string | null;
     latestMessageContent?:        string;
     latestMessageSentAt?:         string;
     latestMessageSenderUserId?:   number;

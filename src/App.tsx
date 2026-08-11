@@ -12,6 +12,7 @@ import Conversations      from "./pages/Conversations.tsx";
 import AskBot             from "./pages/AskBot.tsx";
 import BloodAvailability  from "./pages/BloodAvailability.tsx";
 import Candidates         from "./pages/Candidates.tsx";
+import AccountSettings    from "./pages/AccountSettings.tsx";
 import type {JSX} from "react";
 
 // ── Onboarding/verification gate ────────────────────────────────────────────
@@ -123,7 +124,8 @@ function AppRoutes() {
                 {/* Independent of Conversations — see DamiFYP.Application.Features.BotAssistant */}
                 <Route path="/ask-bot" element={<AskBot />} />
 
-                {/* TODO: Add a /profile page for viewing/editing user details */}
+                <Route path="/account" element={<AccountSettings />} />
+
                 {/* TODO: Add a /conversations/:id page for individual chat view */}
 
             </Route>
