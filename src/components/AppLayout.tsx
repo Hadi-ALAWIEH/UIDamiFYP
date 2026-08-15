@@ -130,21 +130,25 @@ const SIDEBAR_W = 240;
 
 const s = {
     shell: {
-        position:  "fixed" as const,
-        inset:     0,
-        display:   "flex",
-        fontFamily:"system-ui, 'Segoe UI', Roboto, sans-serif",
-        background:"#f8fafc",
-        overflow:  "hidden",
+        position:   "fixed" as const,
+        inset:      0,
+        display:    "flex",
+        fontFamily: "system-ui, 'Segoe UI', Roboto, sans-serif",
+        background: [
+            "radial-gradient(ellipse at 78% 5%,  rgba(198,40,40,0.18)  0%, transparent 50%)",
+            "radial-gradient(ellipse at 15% 95%, rgba(124,58,237,0.09) 0%, transparent 48%)",
+            "linear-gradient(160deg, #fff0f0 0%, #f8fafc 50%, #f4f0ff 100%)",
+        ].join(", "),
+        overflow:   "hidden",
     },
     sidebar: {
         width:         SIDEBAR_W,
         minWidth:      SIDEBAR_W,
-        background:    "linear-gradient(180deg, #6b1414 0%, #7f1d1d 100%)",
+        background:    "linear-gradient(180deg, #5c0f0f 0%, #7f1d1d 55%, #6b1414 100%)",
         display:       "flex",
         flexDirection: "column" as const,
         padding:       "22px 0 18px",
-        boxShadow:     "2px 0 12px rgba(0,0,0,0.18)",
+        boxShadow:     "2px 0 24px rgba(127,29,29,0.35), inset -1px 0 0 rgba(255,255,255,0.06)",
         overflow:      "hidden",
     },
     logoRow: {
@@ -275,9 +279,13 @@ const s = {
         textAlign:   "left" as const,
     },
     main: {
-        flex:     1,
-        overflow: "auto",
-        padding:  "32px 36px",
+        flex:            1,
+        overflow:        "auto",
+        padding:         "32px 36px",
+        backgroundImage: [
+            "radial-gradient(circle, rgba(198,40,40,0.055) 1px, transparent 1px)",
+        ].join(", "),
+        backgroundSize: "28px 28px",
     },
 };
 

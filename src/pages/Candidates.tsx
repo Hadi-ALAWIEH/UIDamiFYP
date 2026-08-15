@@ -27,6 +27,14 @@ function urgencyMeta(u: DonationRequestUrgency) {
     }
 }
 
+function urgencyBorderColor(u: DonationRequestUrgency): string {
+    switch (u) {
+        case DonationRequestUrgency.High:   return "#c62828";
+        case DonationRequestUrgency.Medium: return "#d97706";
+        default:                            return "#94a3b8";
+    }
+}
+
 function statusMeta(s: DonationRequestStatus) {
     switch (s) {
         case DonationRequestStatus.Pending:   return { label: "Pending",   bg: "#fef9c3", color: "#854d0e" };
@@ -193,24 +201,26 @@ export default function Candidates() {
     return (
         <AppLayout>
 
-            <header style={page.topBar}>
-                <div>
-                    <h2 style={page.title}>Find Donors</h2>
-                    <p style={page.subtitle}>
-                        View matching donors for each of your donation requests
-                    </p>
+            {/* Page banner */}
+            <div style={st.pageBanner}>
+                <div style={st.bannerDecor1} />
+                <div style={st.bannerDecor2} />
+                <div style={{ position: "relative", zIndex: 1, flex: 1 }}>
+                    <h2 style={st.bannerTitle}>Find Donors</h2>
+                    <p style={st.bannerSubtitle}>Click a request to see matching donors and confirm a match</p>
+                    {!loading && (
+                        <div style={st.bannerStats}>
+                            <span style={st.statPill}>{requests.length} Request{requests.length !== 1 ? "s" : ""}</span>
+                            <span style={{ ...st.statPill, background: "rgba(254,215,170,0.3)", border: "1px solid rgba(254,215,170,0.5)" }}>
+                                {pendingCount} Pending
+                            </span>
+                        </div>
+                    )}
                 </div>
-                {!loading && (
-                    <div style={st.badge}>
-                        <span style={{ fontWeight: 700, fontSize: 18, color: "#c62828" }}>
-                            {pendingCount}
-                        </span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>
-                            pending {pendingCount === 1 ? "request" : "requests"}
-                        </span>
-                    </div>
-                )}
-            </header>
+                <div style={{ position: "relative", zIndex: 1, flexShrink: 0, display: "flex", alignItems: "center" }}>
+                    <FindDonorsIllustration />
+                </div>
+            </div>
 
             {loading && <p style={{ color: "#94a3b8" }}>Loading your requests…</p>}
             {error   && <p style={{ color: "#dc2626", fontSize: 13 }}>{error}</p>}
@@ -243,6 +253,7 @@ export default function Candidates() {
                             style={{
                                 ...st.requestCard,
                                 ...(isHighlighted ? st.requestCardHighlighted : {}),
+                                borderLeft: `4px solid ${urgencyBorderColor(req.urgency)}`,
                             }}
                         >
 
@@ -250,14 +261,16 @@ export default function Candidates() {
                             <button
                                 style={{
                                     ...st.requestHeader,
-                                    cursor: isPending ? "pointer" : "default",
+                                    cursor:       isPending ? "pointer" : "default",
                                     borderBottom: slot.expanded ? "1px solid #f1f5f9" : "none",
                                 }}
                                 onClick={() => isPending && toggleRequest(req)}
                             >
-                                {/* Blood type circle */}
-                                <div style={page.bloodCircle}>
-                                    {bloodTypeNameStringToLabel(req.bloodTypeName ?? "")}
+                                {/* Rich blood type badge */}
+                                <div style={st.reqBloodBadge}>
+                                    <span style={st.reqBloodText}>
+                                        {bloodTypeNameStringToLabel(req.bloodTypeName ?? "")}
+                                    </span>
                                 </div>
 
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -265,15 +278,15 @@ export default function Candidates() {
                                         {req.address ?? "No address provided"}
                                     </div>
                                     <div style={st.requestMeta}>
-                                        <span style={page.statusChip(um.bg, um.color)}>
+                                        <span style={{ ...st.chip, background: um.bg, color: um.color }}>
                                             {um.label} urgency
                                         </span>
-                                        <span style={st.metaText}>
+                                        <span style={st.chipBlue}>
                                             {req.quantity ?? "?"} unit{(req.quantity ?? 1) !== 1 ? "s" : ""}
                                         </span>
                                         {req.neededByDate && (
-                                            <span style={st.metaText}>
-                                                · Needed by {fmtDate(req.neededByDate)}
+                                            <span style={st.chipGray}>
+                                                By {fmtDate(req.neededByDate)}
                                             </span>
                                         )}
                                         <span style={st.dimText}>
@@ -375,6 +388,8 @@ export default function Candidates() {
 
 // ── Candidate card ────────────────────────────────────────────────────────────
 
+const API_BASE_C = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
+
 function CandidateCard({
     candidate,
     confirming,
@@ -388,52 +403,58 @@ function CandidateCard({
     alreadyMatched: boolean;
     onConfirm:      () => void;
 }) {
+    const initial    = candidate.donorName?.charAt(0)?.toUpperCase() ?? "?";
+    const avatarUrl  = candidate.donorProfilePictureUrl
+        ? `${API_BASE_C}${candidate.donorProfilePictureUrl}`
+        : null;
+
     return (
         <div style={st.candidateCard}>
             {/* Avatar */}
-            <div style={st.candidateAvatar}>
-                {candidate.donorName?.charAt(0)?.toUpperCase() ?? "?"}
+            <div style={st.candidateAvatarWrap}>
+                {avatarUrl ? (
+                    <img src={avatarUrl} alt={candidate.donorName} style={st.candidateAvatarImg} />
+                ) : (
+                    <div style={st.candidateAvatar}>
+                        <div style={st.avatarDecor} />
+                        <span style={st.avatarInitial}>{initial}</span>
+                    </div>
+                )}
             </div>
 
             {/* Info */}
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={st.candidateName}>{candidate.donorName}</div>
-                <div style={st.candidateDetail}>
-                    {candidate.donorAddress ?? "No address provided"}
-                </div>
+                <div style={st.donorBadge}>Blood Donor</div>
                 <div style={st.candidateTags}>
-                    <span style={page.bloodCircle}>
+                    <span style={st.bloodChip}>
                         {bloodTypeNameStringToLabel(candidate.bloodTypeName ?? "")}
                     </span>
                     <span style={st.unitsBadge}>
                         {candidate.quantity ?? "?"} unit{(candidate.quantity ?? 1) !== 1 ? "s" : ""} available
                     </span>
                 </div>
+                {candidate.donorAddress && (
+                    <div style={st.candidateDetail}>
+                        <span style={{ opacity: 0.6 }}>📍</span>
+                        {candidate.donorAddress}
+                    </div>
+                )}
             </div>
 
             {/* Action — once this donor is already matched to the request, replace
                 the button entirely with a non-interactive "Matched" pill so it
-                can't be confirmed again (whether that happened just now in this
-                session, or on an earlier visit — either way the server already
-                told us via candidate.isMatched). */}
+                can't be confirmed again. */}
             {alreadyMatched ? (
-                <span style={{
-                    ...page.statusChip("#dcfce7", "#166534"),
-                    minWidth:   120,
-                    textAlign:  "center" as const,
-                    fontSize:   13,
-                    padding:    "9px 16px",
-                }}>
-                    ✓ Matched
-                </span>
+                <div style={st.matchedPill}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Matched
+                </div>
             ) : (
                 <button
-                    style={{
-                        ...page.primaryBtn,
-                        opacity:    anyConfirming ? 0.6 : 1,
-                        whiteSpace: "nowrap",
-                        minWidth:   120,
-                    }}
+                    style={{ ...st.confirmBtn, opacity: anyConfirming ? 0.6 : 1 }}
                     onClick={onConfirm}
                     disabled={anyConfirming}
                 >
@@ -444,20 +465,99 @@ function CandidateCard({
     );
 }
 
+// ── Illustrations ─────────────────────────────────────────────────────────────
+
+function FindDonorsIllustration() {
+    return (
+        <svg width="130" height="100" viewBox="0 0 130 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Magnifying glass ring */}
+            <circle cx="52" cy="46" r="32" stroke="rgba(255,255,255,0.28)" strokeWidth="5" fill="rgba(255,255,255,0.08)" />
+            {/* Handle */}
+            <line x1="76" y1="70" x2="104" y2="96" stroke="rgba(255,255,255,0.32)" strokeWidth="7" strokeLinecap="round" />
+            {/* Person head inside glass */}
+            <circle cx="52" cy="36" r="9" fill="rgba(255,255,255,0.38)" />
+            {/* Person body arc */}
+            <path d="M30 68 Q30 52 52 52 Q74 52 74 68" fill="rgba(255,255,255,0.22)" />
+            {/* Heart on chest */}
+            <path d="M47 54 C47 51.2 49.4 49.5 52 52 C54.6 49.5 57 51.2 57 54 C57 56.5 52 60 52 60 C52 60 47 56.5 47 54Z" fill="rgba(255,255,255,0.65)" />
+            {/* Blood drop top-right */}
+            <path d="M108 18 C108 18 101 28 101 33 C101 38 104.1 41 108 41 C111.9 41 115 38 115 33 C115 28 108 18 108 18Z" fill="rgba(255,255,255,0.2)" />
+            {/* Sparkles */}
+            <circle cx="118" cy="12" r="2.5" fill="rgba(255,255,255,0.4)" />
+            <circle cx="14" cy="75" r="2"   fill="rgba(255,255,255,0.28)" />
+            <circle cx="8"  cy="38" r="1.5" fill="rgba(255,255,255,0.22)" />
+            <circle cx="122" cy="55" r="1.5" fill="rgba(255,255,255,0.2)" />
+        </svg>
+    );
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const st = {
-    badge: {
-        display:       "flex",
-        flexDirection: "column" as const,
-        alignItems:    "center",
-        background:    "#fff",
-        border:        "1px solid #e2e8f0",
-        borderRadius:  12,
-        padding:       "10px 20px",
-        boxShadow:     "0 1px 4px rgba(0,0,0,0.05)",
-        gap:           2,
+    // ── Banner ────────────────────────────────────────────────────────────────
+    pageBanner: {
+        background:     "linear-gradient(135deg, #7f1d1d 0%, #c62828 55%, #991b1b 100%)",
+        borderRadius:   16,
+        padding:        "24px 28px",
+        marginBottom:   24,
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "space-between",
+        overflow:       "hidden",
+        position:       "relative" as const,
+        minHeight:      120,
+        gap:            16,
     },
+    bannerDecor1: {
+        position:      "absolute" as const,
+        top:           -40,
+        right:         100,
+        width:         160,
+        height:        160,
+        borderRadius:  "50%",
+        background:    "rgba(255,255,255,0.07)",
+        pointerEvents: "none" as const,
+    },
+    bannerDecor2: {
+        position:      "absolute" as const,
+        bottom:        -50,
+        left:          -20,
+        width:         160,
+        height:        160,
+        borderRadius:  "50%",
+        background:    "rgba(255,255,255,0.05)",
+        pointerEvents: "none" as const,
+    },
+    bannerTitle: {
+        color:         "#fff",
+        fontSize:      22,
+        fontWeight:    800,
+        margin:        "0 0 5px",
+        letterSpacing: "-0.3px",
+    },
+    bannerSubtitle: {
+        color:         "rgba(255,255,255,0.75)",
+        fontSize:      13,
+        margin:        "0 0 12px",
+        fontWeight:    500,
+    },
+    bannerStats: {
+        display:  "flex",
+        gap:      8,
+        flexWrap: "wrap" as const,
+    },
+    statPill: {
+        display:      "inline-flex",
+        alignItems:   "center",
+        background:   "rgba(255,255,255,0.18)",
+        border:       "1px solid rgba(255,255,255,0.3)",
+        color:        "#fff",
+        padding:      "3px 11px",
+        borderRadius: 99,
+        fontSize:     12,
+        fontWeight:   600,
+    },
+    // ── List & request cards ──────────────────────────────────────────────────
     list: {
         display:       "flex",
         flexDirection: "column" as const,
@@ -466,8 +566,9 @@ const st = {
     requestCard: {
         background:   "#fff",
         borderRadius: 12,
-        boxShadow:    "0 1px 4px rgba(0,0,0,0.06)",
+        boxShadow:    "0 2px 8px rgba(0,0,0,0.07)",
         overflow:     "hidden",
+        border:       "1px solid #f1f5f9",
     },
     requestCardHighlighted: {
         boxShadow:  "0 0 0 2px #c62828, 0 4px 16px rgba(198,40,40,0.15)",
@@ -484,11 +585,27 @@ const st = {
         fontFamily: "inherit",
         textAlign:  "left" as const,
     },
+    reqBloodBadge: {
+        width:          52,
+        height:         52,
+        borderRadius:   12,
+        background:     "linear-gradient(135deg, #7f1d1d 0%, #c62828 100%)",
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "center",
+        flexShrink:     0,
+        boxShadow:      "0 4px 12px rgba(198,40,40,0.35)",
+    },
+    reqBloodText: {
+        color:      "#fff",
+        fontWeight: 800,
+        fontSize:   13,
+    },
     requestTitle: {
-        fontWeight:   600,
-        fontSize:     14,
-        color:        "#1e293b",
-        marginBottom: 5,
+        fontWeight:   700,
+        fontSize:     15,
+        color:        "#0f172a",
+        marginBottom: 6,
         overflow:     "hidden",
         textOverflow: "ellipsis",
         whiteSpace:   "nowrap" as const,
@@ -496,8 +613,30 @@ const st = {
     requestMeta: {
         display:    "flex",
         alignItems: "center",
-        gap:        8,
+        gap:        6,
         flexWrap:   "wrap" as const,
+    },
+    chip: {
+        fontSize:     11,
+        fontWeight:   700,
+        padding:      "3px 10px",
+        borderRadius: 99,
+    },
+    chipBlue: {
+        fontSize:     11,
+        fontWeight:   600,
+        color:        "#1e40af",
+        background:   "#dbeafe",
+        padding:      "3px 10px",
+        borderRadius: 99,
+    },
+    chipGray: {
+        fontSize:     11,
+        fontWeight:   500,
+        color:        "#475569",
+        background:   "#f1f5f9",
+        padding:      "3px 10px",
+        borderRadius: 99,
     },
     metaText: {
         fontSize: 12,
@@ -514,37 +653,38 @@ const st = {
         flexShrink: 0,
     },
     chevron: {
-        fontSize: 11,
-        color:    "#94a3b8",
+        fontSize:   12,
+        color:      "#94a3b8",
+        fontWeight: 600,
     },
     matchedBanner: {
-        display:      "flex",
-        alignItems:   "center",
-        gap:          10,
-        padding:      "12px 20px",
-        background:   "#eff6ff",
-        borderTop:    "1px solid #bfdbfe",
-        fontSize:     13,
-        color:        "#1e40af",
+        display:    "flex",
+        alignItems: "center",
+        gap:        10,
+        padding:    "12px 20px",
+        background: "#eff6ff",
+        borderTop:  "1px solid #bfdbfe",
+        fontSize:   13,
+        color:      "#1e40af",
     },
     successBanner: {
-        display:      "flex",
-        alignItems:   "center",
-        gap:          10,
-        padding:      "12px 20px",
-        background:   "#f0fdf4",
-        borderTop:    "1px solid #bbf7d0",
-        fontSize:     13,
-        color:        "#166534",
+        display:    "flex",
+        alignItems: "center",
+        gap:        10,
+        padding:    "12px 20px",
+        background: "#f0fdf4",
+        borderTop:  "1px solid #bbf7d0",
+        fontSize:   13,
+        color:      "#166534",
     },
     errBox: {
-        margin:     "0 20px 12px",
-        padding:    "10px 14px",
-        background: "#fef2f2",
-        border:     "1px solid #fecaca",
+        margin:       "0 20px 12px",
+        padding:      "10px 14px",
+        background:   "#fef2f2",
+        border:       "1px solid #fecaca",
         borderRadius: 8,
-        color:      "#dc2626",
-        fontSize:   13,
+        color:        "#dc2626",
+        fontSize:     13,
     },
     link: {
         color:          "#c62828",
@@ -552,10 +692,11 @@ const st = {
         fontWeight:     600,
         fontSize:       13,
     },
+    // ── Candidates panel ──────────────────────────────────────────────────────
     candidatesPanel: {
-        padding: "16px 20px",
-        borderTop: "1px solid #f8fafc",
-        background: "#fafafa",
+        padding:    "16px 20px",
+        borderTop:  "1px solid #f1f5f9",
+        background: "#fafbfc",
     },
     hintText: {
         fontSize: 13,
@@ -563,12 +704,12 @@ const st = {
         margin:   0,
     },
     noCandidates: {
-        display:        "flex",
-        flexDirection:  "column" as const,
-        alignItems:     "center",
-        gap:            10,
-        padding:        "24px 0",
-        textAlign:      "center" as const,
+        display:       "flex",
+        flexDirection: "column" as const,
+        alignItems:    "center",
+        gap:           10,
+        padding:       "24px 0",
+        textAlign:     "center" as const,
     },
     candidatesHeader: {
         display:      "flex",
@@ -591,52 +732,131 @@ const st = {
         flexDirection: "column" as const,
         gap:           10,
     },
+    // ── Candidate card ────────────────────────────────────────────────────────
     candidateCard: {
         display:      "flex",
         alignItems:   "center",
         gap:          14,
         padding:      "14px 16px",
         background:   "#fff",
-        borderRadius: 10,
-        border:       "1px solid #e2e8f0",
-        boxShadow:    "0 1px 3px rgba(0,0,0,0.04)",
+        borderRadius: 12,
+        border:       "1px solid #f1f5f9",
+        boxShadow:    "0 2px 6px rgba(0,0,0,0.05)",
+    },
+    candidateAvatarWrap: {
+        flexShrink: 0,
     },
     candidateAvatar: {
-        width:          44,
-        height:         44,
+        width:          48,
+        height:         48,
         borderRadius:   "50%",
-        background:     "#f1f5f9",
-        color:          "#475569",
+        background:     "linear-gradient(135deg, #7f1d1d 0%, #c62828 100%)",
         display:        "flex",
         alignItems:     "center",
         justifyContent: "center",
-        fontWeight:     700,
-        fontSize:       17,
-        flexShrink:     0,
-        border:         "2px solid #e2e8f0",
+        position:       "relative" as const,
+        overflow:       "hidden",
+        boxShadow:      "0 3px 10px rgba(198,40,40,0.35)",
+    },
+    candidateAvatarImg: {
+        width:        48,
+        height:       48,
+        borderRadius: "50%",
+        objectFit:    "cover" as const,
+        boxShadow:    "0 3px 10px rgba(0,0,0,0.15)",
+        display:      "block",
+    },
+    avatarDecor: {
+        position:      "absolute" as const,
+        top:           -10,
+        right:         -10,
+        width:         34,
+        height:        34,
+        borderRadius:  "50%",
+        background:    "rgba(255,255,255,0.15)",
+        pointerEvents: "none" as const,
+    },
+    avatarInitial: {
+        position:   "relative" as const,
+        zIndex:     1,
+        color:      "#fff",
+        fontWeight: 800,
+        fontSize:   18,
     },
     candidateName: {
-        fontWeight:   600,
-        fontSize:     14,
-        color:        "#1e293b",
+        fontWeight:   700,
+        fontSize:     15,
+        color:        "#0f172a",
         marginBottom: 2,
     },
-    candidateDetail: {
-        fontSize:     12,
-        color:        "#64748b",
-        marginBottom: 6,
+    donorBadge: {
+        fontSize:      10,
+        fontWeight:    700,
+        color:         "#991b1b",
+        textTransform: "uppercase" as const,
+        letterSpacing: "0.5px",
+        marginBottom:  6,
     },
     candidateTags: {
-        display:    "flex",
-        alignItems: "center",
-        gap:        8,
+        display:      "flex",
+        alignItems:   "center",
+        gap:          6,
+        marginBottom: 5,
+        flexWrap:     "wrap" as const,
+    },
+    bloodChip: {
+        fontSize:     12,
+        fontWeight:   800,
+        color:        "#991b1b",
+        background:   "#fee2e2",
+        border:       "1.5px solid #fecaca",
+        padding:      "3px 10px",
+        borderRadius: 8,
     },
     unitsBadge: {
         fontSize:     12,
         fontWeight:   600,
-        color:        "#64748b",
-        background:   "#f1f5f9",
+        color:        "#1e40af",
+        background:   "#dbeafe",
+        border:       "1px solid #bfdbfe",
         padding:      "3px 10px",
-        borderRadius: 99,
+        borderRadius: 8,
+    },
+    candidateDetail: {
+        display:    "flex",
+        alignItems: "flex-start",
+        gap:        4,
+        fontSize:   12,
+        color:      "#64748b",
+        lineHeight: "1.4",
+    },
+    matchedPill: {
+        display:        "inline-flex",
+        alignItems:     "center",
+        gap:            6,
+        background:     "#dcfce7",
+        color:          "#166534",
+        borderRadius:   8,
+        fontSize:       12,
+        fontWeight:     700,
+        padding:        "8px 16px",
+        flexShrink:     0,
+        minWidth:       110,
+        justifyContent: "center",
+    },
+    confirmBtn: {
+        background:   "linear-gradient(135deg, #7f1d1d 0%, #c62828 100%)",
+        color:        "#fff",
+        border:       "none",
+        borderRadius: 9,
+        fontSize:     13,
+        fontWeight:   700,
+        padding:      "9px 18px",
+        cursor:       "pointer",
+        fontFamily:   "inherit",
+        flexShrink:   0,
+        whiteSpace:   "nowrap" as const,
+        boxShadow:    "0 3px 10px rgba(198,40,40,0.3)",
+        minWidth:     120,
     },
 };

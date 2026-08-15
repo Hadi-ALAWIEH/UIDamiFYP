@@ -94,7 +94,7 @@ export default function BloodAvailability() {
     }
 
     async function handlePredict() {
-        if (!form.hospital || !form.hospitalSize || !form.month || !form.bloodType) {
+        if (!form.hospital || !form.hospitalSize || !form.month) {
             setPredError("Please fill in all dropdown fields before predicting.");
             return;
         }

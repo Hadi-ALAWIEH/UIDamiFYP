@@ -102,9 +102,17 @@ function statusMeta(s: DonationRequestStatus) {
 
 function urgencyLabel(u: DonationRequestUrgency) {
     switch (u) {
-        case DonationRequestUrgency.High:   return "⚠ High";
+        case DonationRequestUrgency.High:   return "High";
         case DonationRequestUrgency.Medium: return "Medium";
         default:                            return "Low";
+    }
+}
+
+function urgencyAccent(u: DonationRequestUrgency) {
+    switch (u) {
+        case DonationRequestUrgency.High:   return { border: "#c62828", bg: "#fee2e2", color: "#991b1b" };
+        case DonationRequestUrgency.Medium: return { border: "#d97706", bg: "#fef3c7", color: "#92400e" };
+        default:                            return { border: "#94a3b8", bg: "#f1f5f9", color: "#475569" };
     }
 }
 
@@ -319,18 +327,32 @@ export default function MyRequests() {
     return (
         <AppLayout>
 
-            {/* Top bar */}
-            <header style={page.topBar}>
-                <div>
-                    <h2 style={page.title}>My Requests</h2>
-                    <p style={page.subtitle}>Blood donation requests you have submitted</p>
+            {/* Page banner */}
+            <div style={s.pageBanner}>
+                <div style={s.bannerDecor1} />
+                <div style={s.bannerDecor2} />
+                <div style={{ position: "relative", zIndex: 1, flex: 1 }}>
+                    <h2 style={s.bannerTitle}>My Requests</h2>
+                    <p style={s.bannerSubtitle}>Track and manage your blood donation requests</p>
+                    {!loading && requests.length > 0 && (
+                        <div style={s.bannerStats}>
+                            <span style={s.statPill}>{requests.length} Total</span>
+                            <span style={{ ...s.statPill, background: "rgba(254,215,170,0.3)", border: "1px solid rgba(254,215,170,0.5)" }}>
+                                {requests.filter(r => r.status === DonationRequestStatus.Pending).length} Pending
+                            </span>
+                            <span style={{ ...s.statPill, background: "rgba(191,219,254,0.3)", border: "1px solid rgba(191,219,254,0.5)" }}>
+                                {requests.filter(r => r.status === DonationRequestStatus.Matched).length} Matched
+                            </span>
+                        </div>
+                    )}
                 </div>
-                {!showForm && (
-                    <button style={page.primaryBtn} onClick={() => setShowForm(true)}>
-                        + New Request
-                    </button>
-                )}
-            </header>
+                <div style={{ position: "relative", zIndex: 1, flexShrink: 0, display: "flex", flexDirection: "column" as const, alignItems: "flex-end", gap: 12 }}>
+                    {!showForm && (
+                        <button style={s.bannerBtn} onClick={() => setShowForm(true)}>+ New Request</button>
+                    )}
+                    <RequestsIllustration />
+                </div>
+            </div>
 
             {/* ── Create form ── */}
             {showForm && (
@@ -691,32 +713,42 @@ export default function MyRequests() {
                 <div style={s.list}>
                     {requests.map(r => {
                         const sm = statusMeta(r.status);
+                        const ua = urgencyAccent(r.urgency);
                         return (
-                            <div key={r.id} style={page.card}>
-                                <div style={s.requestRow}>
-                                    <div style={page.bloodCircle}>{bloodTypeNameStringToLabel(r.bloodTypeName)}</div>
+                            <div key={r.id} style={{ ...s.reqCard, borderLeft: `4px solid ${ua.border}` }}>
+                                <div style={s.reqCardBody}>
+                                    {/* Blood type badge */}
+                                    <div style={s.reqBloodBadge}>
+                                        <span style={s.reqBloodText}>
+                                            {bloodTypeNameStringToLabel(r.bloodTypeName)}
+                                        </span>
+                                    </div>
 
+                                    {/* Main info */}
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={s.reqTitle}>
-                                            {/* TODO: BACKEND – r.address is the location from DonationRequestViewModel */}
+                                        <div style={s.reqAddress}>
                                             {r.address ?? "No address provided"}
                                         </div>
-                                        <div style={s.reqMeta}>
-                                            <span style={{ fontSize: 12, color: "#64748b" }}>
-                                                {r.quantity ?? "?"} unit(s) · {urgencyLabel(r.urgency)} urgency
+                                        <div style={s.reqChips}>
+                                            <span style={{ ...s.chip, background: ua.bg, color: ua.color }}>
+                                                {urgencyLabel(r.urgency)} urgency
+                                            </span>
+                                            <span style={s.chipBlue}>
+                                                {r.quantity ?? "?"} unit{(r.quantity ?? 1) !== 1 ? "s" : ""}
                                             </span>
                                             {r.neededByDate && (
-                                                <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                                                    · Needed by {fmtDate(r.neededByDate)}
+                                                <span style={s.chipGray}>
+                                                    By {fmtDate(r.neededByDate)}
                                                 </span>
                                             )}
                                         </div>
-                                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
-                                            Created {fmtDate(r.createdAt)}
+                                        <div style={s.reqPostedDate}>
+                                            Posted {fmtDate(r.createdAt)}
                                         </div>
                                     </div>
 
-                                    <div style={s.reqActions}>
+                                    {/* Status + actions */}
+                                    <div style={s.reqCardRight}>
                                         <span style={page.statusChip(sm.bg, sm.color)}>{sm.label}</span>
                                         {r.status === DonationRequestStatus.Pending && (
                                             <button
@@ -724,7 +756,7 @@ export default function MyRequests() {
                                                 onClick={() => handleDelete(r.id)}
                                                 disabled={deleting === r.id}
                                             >
-                                                {deleting === r.id ? "Deleting…" : "Delete"}
+                                                {deleting === r.id ? "…" : "Delete"}
                                             </button>
                                         )}
                                     </div>
@@ -739,9 +771,193 @@ export default function MyRequests() {
     );
 }
 
+// ── Illustrations ──────────────────────────────────────────────────────────
+
+function RequestsIllustration() {
+    return (
+        <svg width="110" height="88" viewBox="0 0 110 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Clipboard body */}
+            <rect x="18" y="14" width="74" height="66" rx="8" fill="rgba(255,255,255,0.14)" />
+            {/* Clipboard clip */}
+            <rect x="38" y="8"  width="34" height="12" rx="6" fill="rgba(255,255,255,0.22)" />
+            {/* Row 1: check + line */}
+            <circle cx="32" cy="34" r="4"  fill="rgba(255,255,255,0.55)" />
+            <rect   x="42" y="31" width="36" height="6" rx="3" fill="rgba(255,255,255,0.28)" />
+            {/* Row 2 */}
+            <circle cx="32" cy="50" r="4"  fill="rgba(255,255,255,0.55)" />
+            <rect   x="42" y="47" width="28" height="6" rx="3" fill="rgba(255,255,255,0.28)" />
+            {/* Row 3 (lighter — future row) */}
+            <circle cx="32" cy="66" r="4"  fill="rgba(255,255,255,0.32)" />
+            <rect   x="42" y="63" width="32" height="6" rx="3" fill="rgba(255,255,255,0.18)" />
+            {/* Blood drop with cross — top right */}
+            <path d="M88 20 C88 20 81 30 81 35 C81 40.5 84.1 44 88 44 C91.9 44 95 40.5 95 35 C95 30 88 20 88 20Z" fill="rgba(255,255,255,0.32)" />
+            <rect x="85" y="30" width="6" height="11" rx="3" fill="rgba(255,255,255,0.6)" />
+            <rect x="82" y="33" width="12" height="5"  rx="2.5" fill="rgba(255,255,255,0.6)" />
+            {/* Sparkles */}
+            <circle cx="8"   cy="28" r="2"   fill="rgba(255,255,255,0.3)" />
+            <circle cx="104" cy="68" r="1.5" fill="rgba(255,255,255,0.25)" />
+            <circle cx="100" cy="12" r="2.5" fill="rgba(255,255,255,0.2)" />
+        </svg>
+    );
+}
+
 // ── Styles ─────────────────────────────────────────────────────────────────
 
 const s = {
+    // ── Banner ────────────────────────────────────────────────────────────────
+    pageBanner: {
+        background:     "linear-gradient(135deg, #7f1d1d 0%, #c62828 55%, #991b1b 100%)",
+        borderRadius:   16,
+        padding:        "24px 28px",
+        marginBottom:   24,
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "space-between",
+        overflow:       "hidden",
+        position:       "relative" as const,
+        minHeight:      120,
+        gap:            16,
+    },
+    bannerDecor1: {
+        position:      "absolute" as const,
+        top:           -40,
+        right:         100,
+        width:         160,
+        height:        160,
+        borderRadius:  "50%",
+        background:    "rgba(255,255,255,0.07)",
+        pointerEvents: "none" as const,
+    },
+    bannerDecor2: {
+        position:      "absolute" as const,
+        bottom:        -50,
+        left:          -20,
+        width:         160,
+        height:        160,
+        borderRadius:  "50%",
+        background:    "rgba(255,255,255,0.05)",
+        pointerEvents: "none" as const,
+    },
+    bannerTitle: {
+        color:         "#fff",
+        fontSize:      22,
+        fontWeight:    800,
+        margin:        "0 0 5px",
+        letterSpacing: "-0.3px",
+    },
+    bannerSubtitle: {
+        color:         "rgba(255,255,255,0.75)",
+        fontSize:      13,
+        margin:        "0 0 12px",
+        fontWeight:    500,
+    },
+    bannerStats: {
+        display:  "flex",
+        gap:      8,
+        flexWrap: "wrap" as const,
+    },
+    statPill: {
+        display:      "inline-flex",
+        alignItems:   "center",
+        background:   "rgba(255,255,255,0.18)",
+        border:       "1px solid rgba(255,255,255,0.3)",
+        color:        "#fff",
+        padding:      "3px 11px",
+        borderRadius: 99,
+        fontSize:     12,
+        fontWeight:   600,
+    },
+    bannerBtn: {
+        padding:      "9px 18px",
+        background:   "#fff",
+        color:        "#c62828",
+        border:       "none",
+        borderRadius: 9,
+        fontSize:     13,
+        fontWeight:   700,
+        cursor:       "pointer",
+        fontFamily:   "inherit",
+        boxShadow:    "0 2px 8px rgba(0,0,0,0.12)",
+    },
+    // ── Request cards ─────────────────────────────────────────────────────────
+    reqCard: {
+        background:   "#fff",
+        borderRadius: 12,
+        boxShadow:    "0 2px 8px rgba(0,0,0,0.07)",
+        overflow:     "hidden",
+        border:       "1px solid #f1f5f9",
+    },
+    reqCardBody: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        16,
+        padding:    "16px 20px",
+    },
+    reqBloodBadge: {
+        width:          54,
+        height:         54,
+        borderRadius:   12,
+        background:     "linear-gradient(135deg, #7f1d1d 0%, #c62828 100%)",
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "center",
+        flexShrink:     0,
+        boxShadow:      "0 4px 12px rgba(198,40,40,0.35)",
+    },
+    reqBloodText: {
+        color:      "#fff",
+        fontWeight: 800,
+        fontSize:   14,
+    },
+    reqAddress: {
+        fontWeight:   700,
+        fontSize:     15,
+        color:        "#0f172a",
+        marginBottom: 7,
+        overflow:     "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace:   "nowrap" as const,
+    },
+    reqChips: {
+        display:      "flex",
+        gap:          6,
+        flexWrap:     "wrap" as const,
+        alignItems:   "center",
+        marginBottom: 5,
+    },
+    chip: {
+        fontSize:     11,
+        fontWeight:   700,
+        padding:      "3px 10px",
+        borderRadius: 99,
+    },
+    chipBlue: {
+        fontSize:     11,
+        fontWeight:   600,
+        color:        "#1e40af",
+        background:   "#dbeafe",
+        padding:      "3px 10px",
+        borderRadius: 99,
+    },
+    chipGray: {
+        fontSize:     11,
+        fontWeight:   500,
+        color:        "#475569",
+        background:   "#f1f5f9",
+        padding:      "3px 10px",
+        borderRadius: 99,
+    },
+    reqPostedDate: {
+        fontSize: 11,
+        color:    "#94a3b8",
+    },
+    reqCardRight: {
+        display:        "flex",
+        flexDirection:  "column" as const,
+        alignItems:     "flex-end",
+        gap:            6,
+        flexShrink:     0,
+    },
     formGrid: {
         display:             "grid",
         gridTemplateColumns: "1fr 1fr",
@@ -759,31 +975,7 @@ const s = {
     list: {
         display:       "flex",
         flexDirection: "column" as const,
-        gap:           10,
-    },
-    requestRow: {
-        display:    "flex",
-        alignItems: "center",
-        gap:        14,
-    },
-    reqTitle: {
-        fontWeight:   600,
-        fontSize:     14,
-        color:        "#1e293b",
-        marginBottom: 3,
-        overflow:     "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace:   "nowrap" as const,
-    },
-    reqMeta: {
-        display: "flex",
-        gap:     6,
-    },
-    reqActions: {
-        display:    "flex",
-        alignItems: "center",
-        gap:        8,
-        flexShrink: 0,
+        gap:           12,
     },
     // ── Candidates panel ────────────────────────────────────────────────────
     candidatesPanel: {
