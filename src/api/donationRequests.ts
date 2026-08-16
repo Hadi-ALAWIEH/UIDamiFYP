@@ -24,9 +24,9 @@ export interface UpdateDonationRequestPayload {
     quantity:       number;
     latitude?:      number;
     longitude?:     number;
-    urgency:        number;
-    status:         number;   // DonationRequestStatus: 0=Pending,1=Matched,2=Completed,3=Cancelled
-    neededByDate?:  string;
+    address?:       string;
+    urgency:        number;   // DonationRequestUrgency: 0=Low, 1=Medium, 2=High
+    neededByDate?:  string;   // ISO 8601
 }
 
 export interface ConfirmMatchPayload {
@@ -87,6 +87,18 @@ export async function confirmMatch(payload: ConfirmMatchPayload): Promise<void> 
         method: "POST",
         body:   JSON.stringify(payload),
     });
+}
+
+// POST /api/donationrequest/{id}/cancel  (Seeker)
+// Cancels a matched request; notifies the donor by email and SignalR.
+export async function cancelDonationRequest(id: number): Promise<void> {
+    return apiFetch(`/api/donationrequest/${id}/cancel`, { method: "POST" });
+}
+
+// POST /api/donationrequest/{id}/confirm-donation  (Seeker)
+// Marks the request + matched post as Completed; awards points to donor.
+export async function confirmDonation(id: number): Promise<void> {
+    return apiFetch(`/api/donationrequest/${id}/confirm-donation`, { method: "POST" });
 }
 
 // GET /api/donationpost/get-candidates-{id}

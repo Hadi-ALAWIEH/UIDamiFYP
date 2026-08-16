@@ -21,3 +21,9 @@ export async function createDonationPost(payload: CreateDonationPostPayload): Pr
 export async function getMyDonationPosts(): Promise<DonationPostCandidateViewModel[]> {
     return apiFetch("/api/donationpost/get-current-user-donation-posts");
 }
+
+// DELETE /api/donationpost/{id}  (CanManageDonationPosts – Donor/DonorAndSeeker)
+// Blocked with 400 if the post has any Match records (active or historical).
+export async function deleteDonationPost(id: number): Promise<void> {
+    return apiFetch(`/api/donationpost/${id}`, { method: "DELETE" });
+}

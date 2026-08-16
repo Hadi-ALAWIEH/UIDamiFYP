@@ -6,9 +6,11 @@ import LiveLocationMap from "../components/LiveLocationMap.tsx";
 import { useConversations } from "../context/useConversations.ts";
 import { useUser } from "../context/UserContext.tsx";
 import { bloodTypeNameStringToLabel } from "../utils/bloodTypes";
-import type {
-    ConversationViewModel,
-    MessageViewModel,
+import {
+    BadgeTier,
+    BADGE_META,
+    type ConversationViewModel,
+    type MessageViewModel,
 } from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -311,11 +313,22 @@ export default function Conversations() {
                                     })}
 
                                     <div style={st.convBody}>
-                                        <div style={{
-                                            ...st.convName,
-                                            ...(unread ? st.convNameUnread : {}),
-                                        }}>
-                                            {conv.otherUserName}
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                            <span style={{
+                                                ...st.convName,
+                                                ...(unread ? st.convNameUnread : {}),
+                                            }}>
+                                                {conv.otherUserName}
+                                            </span>
+                                            {(() => {
+                                                const tier = conv.otherUserBadgeTier ?? BadgeTier.Newcomer;
+                                                const m = BADGE_META[tier];
+                                                return (
+                                                    <span style={{ background: m.bg, color: m.color, borderRadius: 99, padding: "1px 7px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                                        {m.emoji} {m.label}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                         <div style={st.convPreview}>
                                             {conv.latestMessageContent ?? "No messages yet"}
@@ -358,8 +371,19 @@ export default function Conversations() {
                             <div style={st.chatHeader}>
                                 {otherAvatar(activeConv, st.chatHeaderAvatar)}
                                 <div>
-                                    <div style={st.chatHeaderName}>
-                                        {activeConv.otherUserName}
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span style={st.chatHeaderName}>
+                                            {activeConv.otherUserName}
+                                        </span>
+                                        {(() => {
+                                            const tier = activeConv.otherUserBadgeTier ?? BadgeTier.Newcomer;
+                                            const m = BADGE_META[tier];
+                                            return (
+                                                <span style={{ background: m.bg, color: m.color, borderRadius: 99, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>
+                                                    {m.emoji} {m.label}
+                                                </span>
+                                            );
+                                        })()}
                                     </div>
                                     <div style={st.chatHeaderSub}>
                                         {bloodLabel(activeConv.donationRequestBloodTypeName)} request

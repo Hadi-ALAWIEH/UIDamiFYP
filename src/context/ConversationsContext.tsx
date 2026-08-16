@@ -190,6 +190,10 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
             setLiveLocations(prev => ({ ...prev, [conversationId]: 'ended' }));
         });
 
+        conn.on("RequestCancelled", ({ seekerName, bloodType }: { seekerName: string; bloodType: string }) => {
+            alert(`Your matched blood donation request has been cancelled.\n\nSeeker: ${seekerName}\nBlood type: ${bloodType}\n\nYour donation post is now available to others again.`);
+        });
+
         conn.on("ConversationStarted", (n: ConversationStartedNotification) => {
             reload();
             // Subscribe immediately so a message sent right after the match is

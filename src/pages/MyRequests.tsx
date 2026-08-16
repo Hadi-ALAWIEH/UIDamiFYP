@@ -10,9 +10,14 @@ import { bloodTypeNameStringToLabel, BLOOD_TYPE_NAME_OPTIONS } from "../utils/bl
 import {
     getMyDonationRequests,
     createDonationRequest,
+    updateDonationRequest,
     deleteDonationRequest,
     confirmMatch,
+    cancelDonationRequest,
+    confirmDonation,
+    getCandidatesForRequest,
     type CreateDonationRequestPayload,
+    type UpdateDonationRequestPayload,
 } from "../api/donationRequests";
 import {
     DonationRequestStatus,
@@ -57,6 +62,28 @@ function LocationMarker({
                 },
             }}
         />
+    );
+}
+
+// ── Request mini-map ───────────────────────────────────────────────────────
+// Full-width read-only thumbnail shown on each request card that has coordinates.
+function RequestMiniMap({ lat, lng }: { lat: number; lng: number }) {
+    const pos: [number, number] = [lat, lng];
+    return (
+        <MapContainer
+            center={pos}
+            zoom={14}
+            style={{ height: 190, width: "100%" }}
+            dragging={false}
+            zoomControl={false}
+            scrollWheelZoom={false}
+            doubleClickZoom={false}
+            touchZoom={false}
+            attributionControl={false}
+        >
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <Marker position={pos} />
+        </MapContainer>
     );
 }
 
@@ -130,6 +157,9 @@ export default function MyRequests() {
     const [submitting,  setSubmitting]  = useState(false);
     const [deleting,    setDeleting]    = useState<number | null>(null);
     const [confirming,  setConfirming]  = useState<number | null>(null);
+    const [editingId,   setEditingId]   = useState<number | null>(null);
+    const [cancelling,       setCancelling]       = useState<number | null>(null);
+    const [confirmingDonation, setConfirmingDonation] = useState<number | null>(null);
 
     // ── Form state ──────────────────────────────────────────────────────────
     // bloodTypeName is sent as the enum name string (backend field is string? + Enum.TryParse)
@@ -319,6 +349,95 @@ export default function MyRequests() {
             alert(err instanceof Error ? err.message : "Failed to confirm match.");
         } finally {
             setConfirming(null);
+        }
+    }
+
+    // ── Edit request ───────────────────────────────────────────────────────
+
+    function handleStartEdit(r: DonationRequestViewModel) {
+        setShowForm(false);
+        setEditingId(r.id);
+        setFormBloodType(r.bloodTypeName ?? "APositive");
+        setFormQuantity(r.quantity ?? 1);
+        setFormUrgency(r.urgency);
+        setFormAddress(r.address ?? "");
+        setFormNeededBy(r.neededByDate ? r.neededByDate.split("T")[0] : "");
+        setLatitude(r.latitude);
+        setLongitude(r.longitude);
+        setLocationStatus(r.latitude != null ? "set" : "idle");
+        setShowMap(r.latitude != null);
+        setIsMaximized(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        setSearchError(null);
+        setFormError(null);
+    }
+
+    function handleCancelEdit() {
+        setEditingId(null);
+        setFormError(null);
+        handleClearLocation();
+    }
+
+    async function handleUpdate() {
+        if (editingId == null) return;
+        if (formQuantity < 1) { setFormError("Quantity must be at least 1."); return; }
+        setFormError(null);
+        setSubmitting(true);
+
+        const payload: UpdateDonationRequestPayload = {
+            bloodTypeName: formBloodType,
+            quantity:      formQuantity,
+            urgency:       formUrgency,
+            address:       formAddress || undefined,
+            latitude,
+            longitude,
+            neededByDate:  formNeededBy ? new Date(formNeededBy).toISOString() : undefined,
+        };
+
+        try {
+            await updateDonationRequest(editingId, payload);
+            setEditingId(null);
+            handleClearLocation();
+            load();
+            // Auto-refresh candidates for the updated request
+            const fresh = await getCandidatesForRequest(editingId);
+            if (fresh.candidates.length > 0) {
+                setCandidates({ donationRequestId: editingId, list: fresh.candidates });
+            }
+        } catch (err) {
+            setFormError(err instanceof Error ? err.message : "Failed to save changes.");
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    // ── Confirm donation received ───────────────────────────────────────────
+    async function handleConfirmDonation(id: number) {
+        if (!confirm("Mark this donation as received? This completes the request and awards points to the donor.")) return;
+        setConfirmingDonation(id);
+        try {
+            await confirmDonation(id);
+            load();
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Failed to confirm donation.");
+        } finally {
+            setConfirmingDonation(null);
+        }
+    }
+
+    // ── Cancel matched request ──────────────────────────────────────────────
+
+    async function handleCancelRequest(id: number) {
+        if (!confirm("Cancel this matched request? The donor will be notified by email and a live notification.")) return;
+        setCancelling(id);
+        try {
+            await cancelDonationRequest(id);
+            load();
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Failed to cancel request.");
+        } finally {
+            setCancelling(null);
         }
     }
 
@@ -751,16 +870,205 @@ export default function MyRequests() {
                                     <div style={s.reqCardRight}>
                                         <span style={page.statusChip(sm.bg, sm.color)}>{sm.label}</span>
                                         {r.status === DonationRequestStatus.Pending && (
-                                            <button
-                                                style={{ ...page.dangerBtn, opacity: deleting === r.id ? 0.6 : 1 }}
-                                                onClick={() => handleDelete(r.id)}
-                                                disabled={deleting === r.id}
-                                            >
-                                                {deleting === r.id ? "…" : "Delete"}
-                                            </button>
+                                            <>
+                                                <button
+                                                    style={s.editBtn}
+                                                    onClick={() => handleStartEdit(r)}
+                                                    disabled={editingId === r.id}
+                                                >
+                                                    {editingId === r.id ? "Editing…" : "Edit"}
+                                                </button>
+                                                <button
+                                                    style={{ ...page.dangerBtn, opacity: deleting === r.id ? 0.6 : 1 }}
+                                                    onClick={() => handleDelete(r.id)}
+                                                    disabled={deleting === r.id}
+                                                >
+                                                    {deleting === r.id ? "…" : "Delete"}
+                                                </button>
+                                            </>
+                                        )}
+                                        {r.status === DonationRequestStatus.Matched && (
+                                            <>
+                                                <button
+                                                    style={{ ...s.receivedBtn, opacity: confirmingDonation === r.id ? 0.6 : 1 }}
+                                                    onClick={() => handleConfirmDonation(r.id)}
+                                                    disabled={confirmingDonation === r.id}
+                                                >
+                                                    {confirmingDonation === r.id ? "Confirming…" : "✓ Mark as Received"}
+                                                </button>
+                                                <button
+                                                    style={{ ...page.dangerBtn, opacity: cancelling === r.id ? 0.6 : 1 }}
+                                                    onClick={() => handleCancelRequest(r.id)}
+                                                    disabled={cancelling === r.id}
+                                                >
+                                                    {cancelling === r.id ? "Cancelling…" : "Cancel"}
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
+
+                                {/* ── Inline edit form ── */}
+                                {editingId === r.id && (
+                                    <div style={s.editFormSection}>
+                                        <div style={s.editFormHeader}>
+                                            <span style={s.editFormTitle}>Edit Request</span>
+                                            <button style={s.editFormDismiss} onClick={handleCancelEdit}>✕</button>
+                                        </div>
+
+                                        {formError && <div style={s.errBox}>{formError}</div>}
+
+                                        <div style={s.formGrid}>
+                                            <div style={page.formRow}>
+                                                <label style={page.label}>Blood Type</label>
+                                                <select style={page.input} value={formBloodType} onChange={e => setFormBloodType(e.target.value)}>
+                                                    {BLOOD_TYPE_NAME_OPTIONS.map(o => (
+                                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div style={page.formRow}>
+                                                <label style={page.label}>Quantity (units)</label>
+                                                <input style={page.input} type="number" min={1} value={formQuantity}
+                                                    onChange={e => setFormQuantity(Number(e.target.value))} />
+                                            </div>
+                                            <div style={page.formRow}>
+                                                <label style={page.label}>Urgency</label>
+                                                <select style={page.input} value={formUrgency} onChange={e => setFormUrgency(Number(e.target.value))}>
+                                                    <option value={DonationRequestUrgency.Low}>Low</option>
+                                                    <option value={DonationRequestUrgency.Medium}>Medium</option>
+                                                    <option value={DonationRequestUrgency.High}>High</option>
+                                                </select>
+                                            </div>
+                                            <div style={page.formRow}>
+                                                <label style={page.label}>Needed By (optional)</label>
+                                                <input style={page.input} type="date" value={formNeededBy}
+                                                    onChange={e => setFormNeededBy(e.target.value)} />
+                                            </div>
+                                            <div style={{ ...page.formRow, gridColumn: "1 / -1" }}>
+                                                <label style={page.label}>Address / Hospital (optional)</label>
+                                                <input style={page.input} type="text"
+                                                    placeholder="e.g. City General Hospital, Downtown"
+                                                    value={formAddress} onChange={e => setFormAddress(e.target.value)} />
+                                            </div>
+                                            <div style={{ ...page.formRow, gridColumn: "1 / -1" }}>
+                                                <label style={page.label}>Location (optional)</label>
+                                                {!showMap && (
+                                                    <div style={s.locRow}>
+                                                        <button type="button" style={s.locationBtn}
+                                                            onClick={handleUseCurrentLocation}
+                                                            disabled={submitting || locationStatus === "requesting"}>
+                                                            {locationStatus === "requesting" ? "Getting your location…" : "📍 Use my current location"}
+                                                        </button>
+                                                        <button type="button" style={s.locationBtnSecondary}
+                                                            onClick={handleChooseOnMap} disabled={submitting}>
+                                                            🗺️ Choose on map
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {showMap && (
+                                                    <>
+                                                        {isMaximized && <div style={s.mapBackdrop} onClick={() => setIsMaximized(false)} />}
+                                                        <div style={isMaximized ? s.mapPanelMaximized : s.mapPanelInline}>
+                                                            <div style={s.mapPanelHeader}>
+                                                                <form onSubmit={handleSearch} style={s.searchRow}>
+                                                                    <input style={s.searchInput}
+                                                                        placeholder="Search for a place or address…"
+                                                                        value={searchQuery}
+                                                                        onChange={e => setSearchQuery(e.target.value)}
+                                                                        disabled={submitting} />
+                                                                    <button type="submit" style={s.searchBtn}
+                                                                        disabled={submitting || searching || !searchQuery.trim()}>
+                                                                        {searching ? "…" : "🔍"}
+                                                                    </button>
+                                                                </form>
+                                                                <button type="button" style={s.maximizeBtn}
+                                                                    onClick={() => setIsMaximized(v => !v)}
+                                                                    title={isMaximized ? "Restore map" : "Maximize map"}>
+                                                                    {isMaximized ? "⤡" : "⤢"}
+                                                                </button>
+                                                            </div>
+                                                            {searchResults.length > 0 && (
+                                                                <div style={s.searchResults}>
+                                                                    {searchResults.map((res, i) => (
+                                                                        <button key={`${res.lat}-${res.lon}-${i}`} type="button"
+                                                                            style={s.searchResultItem}
+                                                                            onClick={() => handleSelectResult(res)}>
+                                                                            {res.display_name}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {searchError && <div style={s.mapHint}>{searchError}</div>}
+                                                            <MapContainer ref={mapRef} center={markerPosition}
+                                                                zoom={locationStatus === "set" ? 14 : 11}
+                                                                style={isMaximized ? { ...s.map, ...s.mapMaximized } : s.map}>
+                                                                <TileLayer
+                                                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                                                                <LocationMarker position={markerPosition} onPick={(lat, lng) => applyPosition(lat, lng)} />
+                                                            </MapContainer>
+                                                            <div style={s.mapHint}>Search above, tap the map, or drag the pin to set the location.</div>
+                                                            <div style={s.locRow}>
+                                                                <button type="button" style={s.locationBtnSmall}
+                                                                    onClick={handleUseCurrentLocation}
+                                                                    disabled={submitting || locationStatus === "requesting"}>
+                                                                    {locationStatus === "requesting" ? "Locating…" : "📍 Use my current location"}
+                                                                </button>
+                                                                <button type="button" style={s.locationBtnSmall}
+                                                                    onClick={handleClearLocation} disabled={submitting}>
+                                                                    ✕ Clear location
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                )}
+                                                {locationStatus === "denied" && <div style={s.mapHint}>Location access was denied — search or pick a point on the map instead, or continue without one.</div>}
+                                                {locationStatus === "error"  && <div style={s.mapHint}>Automatic location isn't available on this device/browser — search or pick a point on the map instead.</div>}
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                                            <button
+                                                style={{ ...page.primaryBtn, opacity: submitting ? 0.7 : 1 }}
+                                                onClick={handleUpdate}
+                                                disabled={submitting}
+                                            >
+                                                {submitting ? "Saving…" : "Save Changes"}
+                                            </button>
+                                            <button style={page.secondaryBtn} onClick={handleCancelEdit}>
+                                                Discard
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Location map ── */}
+                                {r.latitude != null && r.longitude != null && (
+                                    <div style={s.reqMapSection}>
+                                        <RequestMiniMap lat={r.latitude} lng={r.longitude} />
+                                        <div style={s.reqMapOverlay}>
+                                            <span style={s.reqCoordBadge}>
+                                                {r.latitude.toFixed(4)}°, {r.longitude.toFixed(4)}°
+                                            </span>
+                                            <a
+                                                href={`https://www.google.com/maps?q=${r.latitude},${r.longitude}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={s.reqGmapsBtn}
+                                            >
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" strokeWidth="2.5"
+                                                    strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                                    <polyline points="15 3 21 3 21 9"/>
+                                                    <line x1="10" y1="14" x2="21" y2="3"/>
+                                                </svg>
+                                                Open in Google Maps
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -977,6 +1285,97 @@ const s = {
         flexDirection: "column" as const,
         gap:           12,
     },
+    // ── Request card map section ────────────────────────────────────────────
+    reqMapSection: {
+        position:  "relative" as const,
+        borderTop: "1px solid #f1f5f9",
+    },
+    reqMapOverlay: {
+        position:       "absolute" as const,
+        bottom:         0,
+        left:           0,
+        right:          0,
+        background:     "linear-gradient(to top, rgba(15,23,42,0.82) 0%, rgba(15,23,42,0.38) 60%, transparent 100%)",
+        padding:        "40px 16px 14px",
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "space-between",
+        zIndex:         800,
+    },
+    reqCoordBadge: {
+        background:    "rgba(255,255,255,0.14)",
+        border:        "1px solid rgba(255,255,255,0.28)",
+        borderRadius:  99,
+        padding:       "4px 12px",
+        fontSize:      11,
+        fontWeight:    600,
+        color:         "#fff",
+        letterSpacing: "0.03em",
+    },
+    reqGmapsBtn: {
+        display:        "flex",
+        alignItems:     "center",
+        gap:            6,
+        padding:        "7px 14px",
+        background:     "#fff",
+        borderRadius:   8,
+        fontSize:       12,
+        fontWeight:     700,
+        color:          "#1e293b",
+        textDecoration: "none",
+        boxShadow:      "0 2px 10px rgba(0,0,0,0.28)",
+        letterSpacing:  "0.01em",
+    },
+    // ── Mark as received button ──────────────────────────────────────────────
+    receivedBtn: {
+        padding:       "7px 16px",
+        background:    "linear-gradient(135deg, #065f46 0%, #059669 100%)",
+        color:         "#fff",
+        border:        "none",
+        borderRadius:  8,
+        fontSize:      13,
+        fontWeight:    700,
+        cursor:        "pointer",
+        letterSpacing: "0.01em",
+    } as React.CSSProperties,
+    // ── Edit button ─────────────────────────────────────────────────────────
+    editBtn: {
+        padding:       "7px 16px",
+        background:    "linear-gradient(135deg, #1e40af 0%, #2563eb 100%)",
+        color:         "#fff",
+        border:        "none",
+        borderRadius:  8,
+        fontSize:      13,
+        fontWeight:    700,
+        cursor:        "pointer",
+        letterSpacing: "0.01em",
+    } as React.CSSProperties,
+    // ── Inline edit form ────────────────────────────────────────────────────
+    editFormSection: {
+        borderTop:  "2px solid #bfdbfe",
+        background: "linear-gradient(180deg, #eff6ff 0%, #fff 100%)",
+        padding:    "20px 22px",
+    } as React.CSSProperties,
+    editFormHeader: {
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "space-between",
+        marginBottom:   14,
+    } as React.CSSProperties,
+    editFormTitle: {
+        fontSize:   15,
+        fontWeight: 800,
+        color:      "#1e293b",
+    } as React.CSSProperties,
+    editFormDismiss: {
+        background: "transparent",
+        border:     "none",
+        fontSize:   16,
+        cursor:     "pointer",
+        color:      "#64748b",
+        lineHeight: 1,
+        padding:    4,
+    } as React.CSSProperties,
     // ── Candidates panel ────────────────────────────────────────────────────
     candidatesPanel: {
         marginBottom:  24,

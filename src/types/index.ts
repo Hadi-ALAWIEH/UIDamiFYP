@@ -54,6 +54,28 @@ export enum VerificationStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Returned by POST /api/CompleteOnboarding (CompleteUserOnboardingViewModel)
+export enum BadgeTier {
+    Newcomer    = 0,
+    Helper      = 1,
+    Contributor = 2,
+    Guardian    = 3,
+    Hero        = 4,
+}
+
+export enum DonationPostStatus {
+    Active    = 0,
+    Completed = 1,
+}
+
+// Badge label + emoji for display
+export const BADGE_META: Record<BadgeTier, { label: string; emoji: string; color: string; bg: string }> = {
+    [BadgeTier.Newcomer]:    { label: "Newcomer",    emoji: "🩸", color: "#64748b", bg: "#f1f5f9" },
+    [BadgeTier.Helper]:      { label: "Helper",      emoji: "🥉", color: "#92400e", bg: "#fef3c7" },
+    [BadgeTier.Contributor]: { label: "Contributor", emoji: "🥈", color: "#475569", bg: "#e2e8f0" },
+    [BadgeTier.Guardian]:    { label: "Guardian",    emoji: "🥇", color: "#b45309", bg: "#fef9c3" },
+    [BadgeTier.Hero]:        { label: "Hero",        emoji: "💎", color: "#6d28d9", bg: "#ede9fe" },
+};
+
 export interface UserProfileData {
     userId:        number;
     name:          string;
@@ -69,6 +91,8 @@ export interface UserProfileData {
     // predates the verification step and doesn't carry it.
     verificationStatus?: VerificationStatus;
     profilePictureUrl?: string | null;
+    badgeTier?:        BadgeTier;
+    donationPoints?:   number;
 }
 
 // Returned by GET /api/verification/status (VerificationStatusViewModel)
@@ -117,6 +141,8 @@ export interface DonationPostCandidateViewModel {
     // so it survives page reloads (unlike a purely local "just confirmed" flag).
     isMatched?:             boolean;
     donorProfilePictureUrl?: string | null;
+    donorBadgeTier?:        BadgeTier;
+    status?:                DonationPostStatus;
 }
 
 // Returned by POST /api/donationrequest and GET /api/donationpost/get-candidates-{id}
@@ -154,6 +180,7 @@ export interface ConversationViewModel {
     otherUserEmail:               string;
     otherUserRole:                BusinessRole;
     otherUserProfilePictureUrl?:  string | null;
+    otherUserBadgeTier?:          BadgeTier;
     latestMessageContent?:        string;
     latestMessageSentAt?:         string;
     latestMessageSenderUserId?:   number;

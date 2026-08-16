@@ -6,7 +6,8 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import AppLayout, { page } from "../components/AppLayout.tsx";
-import { createDonationPost, getMyDonationPosts } from "../api/donationPosts";
+import { createDonationPost, deleteDonationPost, getMyDonationPosts } from "../api/donationPosts";
+import { DonationPostStatus } from "../types";
 import { BLOOD_TYPE_OPTIONS, bloodTypeNameStringToLabel } from "../utils/bloodTypes";
 import type { DonationPostCandidateViewModel } from "../types";
 
@@ -106,6 +107,7 @@ export default function MyPosts() {
     const [posts,        setPosts]        = useState<DonationPostCandidateViewModel[]>([]);
     const [postsLoading, setPostsLoading] = useState(true);
     const [postsError,   setPostsError]   = useState<string | null>(null);
+    const [deleting,     setDeleting]     = useState<number | null>(null);
     const [showForm,     setShowForm]     = useState(false);
     const [submitting,   setSubmitting]   = useState(false);
     const [formError,    setFormError]    = useState<string | null>(null);
@@ -223,6 +225,19 @@ export default function MyPosts() {
     }
 
     useEffect(loadPosts, []);
+
+    async function handleDelete(id: number) {
+        if (!window.confirm("Delete this donation post? This cannot be undone.")) return;
+        setDeleting(id);
+        try {
+            await deleteDonationPost(id);
+            loadPosts();
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Failed to delete post.");
+        } finally {
+            setDeleting(null);
+        }
+    }
 
     async function handleCreate() {
         if (quantity < 1) { setFormError("Quantity must be at least 1."); return; }
@@ -550,7 +565,10 @@ export default function MyPosts() {
                                         )}
                                     </div>
 
-                                    <span style={st.activePill}>Active</span>
+                                    {p.status === DonationPostStatus.Completed
+                                        ? <span style={st.completedPill}>✓ Completed</span>
+                                        : <span style={st.activePill}>Active</span>
+                                    }
                                 </div>
 
                                 {/* ── Map section ── */}
@@ -578,6 +596,37 @@ export default function MyPosts() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* ── Card footer ── */}
+                                <div style={st.cardFooter}>
+                                    {p.status === DonationPostStatus.Completed ? (
+                                        <div style={st.completedNotice}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                            This donation has been confirmed as received — thank you for saving a life!
+                                        </div>
+                                    ) : p.isMatched ? (
+                                        <div style={st.matchedNotice}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <circle cx="12" cy="12" r="10"/>
+                                                <line x1="12" y1="8" x2="12" y2="12"/>
+                                                <line x1="12" y1="16" x2="12.01" y2="16"/>
+                                            </svg>
+                                            Linked to an active request — ask the seeker to cancel it first, then you can delete this post.
+                                        </div>
+                                    ) : (
+                                        <button
+                                            style={{ ...page.dangerBtn, opacity: deleting === p.donationPostId ? 0.6 : 1 }}
+                                            disabled={deleting === p.donationPostId}
+                                            onClick={() => handleDelete(p.donationPostId!)}
+                                        >
+                                            {deleting === p.donationPostId ? "Deleting…" : "Delete Post"}
+                                        </button>
+                                    )}
+                                </div>
 
                             </div>
                         );
@@ -753,6 +802,29 @@ const st = {
         fontWeight:   700,
         flexShrink:   0,
     },
+    completedPill: {
+        background:   "#ede9fe",
+        color:        "#6d28d9",
+        border:       "1px solid #c4b5fd",
+        borderRadius: 99,
+        padding:      "4px 12px",
+        fontSize:     12,
+        fontWeight:   700,
+        flexShrink:   0,
+    },
+    completedNotice: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        7,
+        fontSize:   12,
+        fontWeight: 500,
+        color:      "#065f46",
+        background: "#d1fae5",
+        border:     "1px solid #6ee7b7",
+        borderRadius: 8,
+        padding:    "7px 12px",
+        lineHeight: 1.45,
+    } as React.CSSProperties,
     addressLine: {
         fontSize:   13,
         color:      "#475569",
@@ -763,6 +835,26 @@ const st = {
     },
 
     // Map section on post card
+    cardFooter: {
+        padding:    "12px 18px",
+        borderTop:  "1px solid #f1f5f9",
+        display:    "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+    } as React.CSSProperties,
+    matchedNotice: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        7,
+        fontSize:   12,
+        fontWeight: 500,
+        color:      "#92400e",
+        background: "#fef3c7",
+        border:     "1px solid #fde68a",
+        borderRadius: 8,
+        padding:    "7px 12px",
+        lineHeight: 1.45,
+    } as React.CSSProperties,
     mapSection: {
         position:  "relative" as const,
         borderTop: "1px solid #f1f5f9",

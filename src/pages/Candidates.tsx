@@ -7,6 +7,8 @@ import { bloodTypeNameStringToLabel } from "../utils/bloodTypes";
 import {
     DonationRequestStatus,
     DonationRequestUrgency,
+    BadgeTier,
+    BADGE_META,
     type DonationRequestViewModel,
     type DonationPostCandidateViewModel,
 } from "../types";
@@ -425,7 +427,18 @@ function CandidateCard({
             {/* Info */}
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={st.candidateName}>{candidate.donorName}</div>
-                <div style={st.donorBadge}>Blood Donor</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={st.donorBadge}>Blood Donor</span>
+                    {(() => {
+                        const tier = candidate.donorBadgeTier ?? BadgeTier.Newcomer;
+                        const m = BADGE_META[tier];
+                        return (
+                            <span style={{ background: m.bg, color: m.color, borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
+                                {m.emoji} {m.label}
+                            </span>
+                        );
+                    })()}
+                </div>
                 <div style={st.candidateTags}>
                     <span style={st.bloodChip}>
                         {bloodTypeNameStringToLabel(candidate.bloodTypeName ?? "")}

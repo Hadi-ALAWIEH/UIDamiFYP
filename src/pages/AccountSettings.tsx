@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from "react";
 import AppLayout, { page } from "../components/AppLayout.tsx";
 import { useUser } from "../context/UserContext.tsx";
 import { updateUserProfile } from "../api/profile.ts";
-import { BusinessRole } from "../types";
+import { BusinessRole, BadgeTier, BADGE_META } from "../types";
 
 const ROLE_OPTIONS = [
     { value: BusinessRole.Donor,         label: "Donor",           desc: "I want to donate blood" },
@@ -96,6 +96,20 @@ export default function AccountSettings() {
                                 </div>
                             </div>
                             <div style={s.avatarMeta}>
+                                {(() => {
+                                    const tier = profile?.badgeTier ?? BadgeTier.Newcomer;
+                                    const m = BADGE_META[tier];
+                                    return (
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                                            <span style={{ background: m.bg, color: m.color, borderRadius: 99, padding: "4px 14px", fontSize: 13, fontWeight: 800 }}>
+                                                {m.emoji} {m.label}
+                                            </span>
+                                            <span style={{ fontSize: 12, color: "#64748b" }}>
+                                                {profile?.donationPoints ?? 0} point{(profile?.donationPoints ?? 0) !== 1 ? "s" : ""}
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
                                 <p style={s.avatarHint}>Click the image to upload a new photo.</p>
                                 <p style={s.avatarHintSub}>JPG, PNG or WEBP. Max 5 MB recommended.</p>
                                 {file && (
