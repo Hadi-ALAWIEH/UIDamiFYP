@@ -10,6 +10,7 @@ import { createDonationPost, deleteDonationPost, getMyDonationPosts } from "../a
 import { DonationPostStatus } from "../types";
 import { BLOOD_TYPE_OPTIONS, bloodTypeNameStringToLabel } from "../utils/bloodTypes";
 import type { DonationPostCandidateViewModel } from "../types";
+import { useUser } from "../context/UserContext";
 
 // ── Leaflet icon fix ───────────────────────────────────────────────────────
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -104,6 +105,13 @@ function PostMiniMap({ lat, lng }: { lat: number; lng: number }) {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function MyPosts() {
+    const { profile } = useUser();
+    const cooldownEnd = profile?.cooldownEndsAt ? new Date(profile.cooldownEndsAt) : null;
+    const onCooldown  = cooldownEnd != null && cooldownEnd > new Date();
+    const cooldownMinsLeft = cooldownEnd
+        ? Math.ceil((cooldownEnd.getTime() - Date.now()) / 60000)
+        : 0;
+
     const [posts,        setPosts]        = useState<DonationPostCandidateViewModel[]>([]);
     const [postsLoading, setPostsLoading] = useState(true);
     const [postsError,   setPostsError]   = useState<string | null>(null);
@@ -288,7 +296,7 @@ export default function MyPosts() {
 
                 <div style={st.bannerRight}>
                     <PostsIllustration />
-                    {!showForm && (
+                    {!showForm && !onCooldown && (
                         <button
                             style={st.newPostBtn}
                             onClick={() => { setShowForm(true); setSuccessMsg(null); }}
@@ -300,6 +308,24 @@ export default function MyPosts() {
             </div>
 
             {successMsg && <div style={st.successBox}>{successMsg}</div>}
+
+            {onCooldown && cooldownEnd && (
+                <div style={st.cooldownBanner}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span>
+                        You recently completed a donation. For your health, posting is available again in{" "}
+                        <strong>{cooldownMinsLeft} minute{cooldownMinsLeft === 1 ? "" : "s"}</strong>{" "}
+                        <span style={{ opacity: 0.75 }}>
+                            ({cooldownEnd.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})
+                        </span>
+                        {" "}— 5-minute medical cooldown.
+                    </span>
+                </div>
+            )}
 
             {/* ── Create form ── */}
             {showForm && (
@@ -600,12 +626,29 @@ export default function MyPosts() {
                                 {/* ── Card footer ── */}
                                 <div style={st.cardFooter}>
                                     {p.status === DonationPostStatus.Completed ? (
-                                        <div style={st.completedNotice}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                                                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                                <polyline points="20 6 9 17 4 12"/>
-                                            </svg>
-                                            This donation has been confirmed as received — thank you for saving a life!
+                                        <div style={{ display: "flex", flexDirection: "column" as const, gap: 8, width: "100%" }}>
+                                            <div style={st.completedNotice}>
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                    <polyline points="20 6 9 17 4 12"/>
+                                                </svg>
+                                                This donation has been confirmed as received — thank you for saving a life!
+                                            </div>
+                                            {p.receivedFeedbackRating != null ? (
+                                                <div style={st.feedbackReceived}>
+                                                    <span style={st.feedbackLabel}>Seeker rating:</span>
+                                                    <span style={st.feedbackStars}>
+                                                        {[1,2,3,4,5].map(n => (
+                                                            <span key={n} style={{ color: n <= p.receivedFeedbackRating! ? "#f59e0b" : "#d1d5db" }}>★</span>
+                                                        ))}
+                                                    </span>
+                                                    {p.receivedFeedbackComment && (
+                                                        <span style={st.feedbackComment}>"{p.receivedFeedbackComment}"</span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div style={st.awaitingFeedback}>Awaiting feedback from the seeker…</div>
+                                            )}
                                         </div>
                                     ) : p.isMatched ? (
                                         <div style={st.matchedNotice}>
@@ -855,6 +898,33 @@ const st = {
         padding:    "7px 12px",
         lineHeight: 1.45,
     } as React.CSSProperties,
+    feedbackReceived: {
+        display:    "flex",
+        alignItems: "center",
+        flexWrap:   "wrap" as const,
+        gap:        8,
+        fontSize:   13,
+        color:      "#374151",
+    } as React.CSSProperties,
+    feedbackLabel: {
+        fontWeight: 600,
+        color:      "#64748b",
+        fontSize:   12,
+    } as React.CSSProperties,
+    feedbackStars: {
+        fontSize:   18,
+        lineHeight: 1,
+    } as React.CSSProperties,
+    feedbackComment: {
+        fontStyle: "italic",
+        color:     "#475569",
+        fontSize:  13,
+    } as React.CSSProperties,
+    awaitingFeedback: {
+        fontSize:   12,
+        color:      "#94a3b8",
+        fontStyle:  "italic",
+    } as React.CSSProperties,
     mapSection: {
         position:  "relative" as const,
         borderTop: "1px solid #f1f5f9",
@@ -955,6 +1025,22 @@ const st = {
         cursor:       "pointer",
         fontFamily:   "inherit",
     },
+
+    // Cooldown notice
+    cooldownBanner: {
+        display:      "flex",
+        alignItems:   "center",
+        gap:          10,
+        background:   "#fffbeb",
+        border:       "1px solid #fde68a",
+        borderRadius: 10,
+        padding:      "12px 16px",
+        color:        "#92400e",
+        fontSize:     13,
+        fontWeight:   500,
+        marginBottom: 20,
+        lineHeight:   1.5,
+    } as React.CSSProperties,
 
     // Feedback
     errBox: {

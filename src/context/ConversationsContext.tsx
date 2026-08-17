@@ -53,7 +53,7 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? "https://localhost:7212";
 // to always see null and throw "must be used inside <ConversationsProvider>".
 
 export function ConversationsProvider({ children }: { children: React.ReactNode }) {
-    const { profile } = useUser();
+    const { profile, refreshProfile } = useUser();
 
     const [conversations, setConversations]               = useState<ConversationViewModel[]>([]);
     const [conversationsLoading, setConversationsLoading]  = useState(true);
@@ -192,6 +192,14 @@ export function ConversationsProvider({ children }: { children: React.ReactNode 
 
         conn.on("RequestCancelled", ({ seekerName, bloodType }: { seekerName: string; bloodType: string }) => {
             alert(`Your matched blood donation request has been cancelled.\n\nSeeker: ${seekerName}\nBlood type: ${bloodType}\n\nYour donation post is now available to others again.`);
+        });
+
+        conn.on("DonationConfirmed", ({ seekerName, bloodType, pointsEarned, newTier, totalPoints }: {
+            seekerName: string; bloodType: string; pointsEarned: number; newTier: string; totalPoints: number;
+        }) => {
+            // Refresh profile so badge tier updates everywhere immediately
+            refreshProfile();
+            alert(`🎉 ${seekerName} confirmed your blood donation (${bloodType}) was received!\n\n+${pointsEarned} point${pointsEarned > 1 ? "s" : ""} earned · Badge: ${newTier} · Total: ${totalPoints} pts`);
         });
 
         conn.on("ConversationStarted", (n: ConversationStartedNotification) => {

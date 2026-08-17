@@ -4,6 +4,7 @@ import { logout } from "../auth/Keycloak.ts";
 import { useUser } from "../context/UserContext.tsx";
 import { useConversations } from "../context/useConversations.ts";
 import { getRoleBadgeStyle, getRoleLabel } from "../utils/roles";
+import { BadgeTier, BADGE_META } from "../types";
 
 // ── Nav item definition ────────────────────────────────────────────────────
 
@@ -77,6 +78,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <div style={s.userInfo}>
                         <div style={s.userName}>{displayName}</div>
                         <span style={{ ...s.rolePill, ...roleBadge }}>{roleLabel}</span>
+                        {(() => {
+                            const tier = profile?.badgeTier ?? BadgeTier.Newcomer;
+                            const m = BADGE_META[tier];
+                            return (
+                                <span style={{
+                                    display:      "inline-block",
+                                    marginTop:    4,
+                                    background:   m.bg,
+                                    color:        m.color,
+                                    borderRadius: 99,
+                                    padding:      "2px 9px",
+                                    fontSize:     10,
+                                    fontWeight:   700,
+                                    letterSpacing: "0.02em",
+                                }}>
+                                    {m.emoji} {m.label}
+                                </span>
+                            );
+                        })()}
                     </div>
                 </div>
 

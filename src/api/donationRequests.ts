@@ -2,6 +2,7 @@ import { apiFetch } from "./client";
 import type {
     DonationRequestViewModel,
     DonationRequestMatchCandidatesViewModel,
+    DonorFeedbackPayload,
 } from "../types";
 
 // ── Request payloads ────────────────────────────────────────────────────────
@@ -107,4 +108,13 @@ export async function getCandidatesForRequest(
     donationRequestId: number,
 ): Promise<DonationRequestMatchCandidatesViewModel> {
     return apiFetch(`/api/donationpost/get-candidates-${donationRequestId}`);
+}
+
+// POST /api/donationrequest/{id}/feedback  (Seeker)
+// Submits a star rating + optional comment for the donor after donation is confirmed.
+export async function submitDonorFeedback(id: number, payload: DonorFeedbackPayload): Promise<void> {
+    return apiFetch(`/api/donationrequest/${id}/feedback`, {
+        method: "POST",
+        body:   JSON.stringify(payload),
+    });
 }

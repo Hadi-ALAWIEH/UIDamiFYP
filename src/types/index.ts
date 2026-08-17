@@ -93,6 +93,7 @@ export interface UserProfileData {
     profilePictureUrl?: string | null;
     badgeTier?:        BadgeTier;
     donationPoints?:   number;
+    cooldownEndsAt?:   string;  // ISO 8601 — present and in the future means on cooldown
 }
 
 // Returned by GET /api/verification/status (VerificationStatusViewModel)
@@ -110,6 +111,11 @@ export interface SubmitVerificationResponse {
 
 // Returned by GET /api/donationrequest endpoints (DonationRequestViewModel)
 // NOTE: bloodTypeName is serialized as a string by the backend ("APositive", "OPositive", etc.)
+export interface DonorFeedbackPayload {
+    rating:   number;
+    comment?: string;
+}
+
 export interface DonationRequestViewModel {
     id:            number;
     damiUserId:    number;
@@ -122,6 +128,9 @@ export interface DonationRequestViewModel {
     status:        DonationRequestStatus;
     createdAt:     string;          // ISO 8601
     neededByDate?: string;          // ISO 8601
+    feedbackRating?:  number;
+    feedbackComment?: string;
+    hasFeedback?:     boolean;
 }
 
 // A matching donor candidate (inside DonationRequestMatchCandidatesViewModel)
@@ -143,6 +152,10 @@ export interface DonationPostCandidateViewModel {
     donorProfilePictureUrl?: string | null;
     donorBadgeTier?:        BadgeTier;
     status?:                DonationPostStatus;
+    receivedFeedbackRating?:  number;
+    receivedFeedbackComment?: string;
+    averageRating?:           number;
+    reviewCount?:             number;
 }
 
 // Returned by POST /api/donationrequest and GET /api/donationpost/get-candidates-{id}

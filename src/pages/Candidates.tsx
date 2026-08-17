@@ -447,6 +447,21 @@ function CandidateCard({
                         {candidate.quantity ?? "?"} unit{(candidate.quantity ?? 1) !== 1 ? "s" : ""} available
                     </span>
                 </div>
+                {/* Aggregate donor rating */}
+                {(candidate.reviewCount ?? 0) > 0 ? (
+                    <div style={st.ratingRow}>
+                        <span style={st.ratingStars}>
+                            {[1,2,3,4,5].map(n => (
+                                <span key={n} style={{ color: n <= Math.round(candidate.averageRating ?? 0) ? "#f59e0b" : "#d1d5db" }}>★</span>
+                            ))}
+                        </span>
+                        <span style={st.ratingText}>
+                            {candidate.averageRating?.toFixed(1)} ({candidate.reviewCount} review{candidate.reviewCount !== 1 ? "s" : ""})
+                        </span>
+                    </div>
+                ) : (
+                    <div style={st.noReviews}>No reviews yet</div>
+                )}
                 {candidate.donorAddress && (
                     <div style={st.candidateDetail}>
                         <span style={{ opacity: 0.6 }}>📍</span>
@@ -834,6 +849,26 @@ const st = {
         border:       "1px solid #bfdbfe",
         padding:      "3px 10px",
         borderRadius: 8,
+    },
+    ratingRow: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        5,
+        marginBottom: 4,
+    },
+    ratingStars: {
+        fontSize:   15,
+        lineHeight: 1,
+    },
+    ratingText: {
+        fontSize: 12,
+        color:    "#64748b",
+    },
+    noReviews: {
+        fontSize:   12,
+        color:      "#94a3b8",
+        fontStyle:  "italic",
+        marginBottom: 4,
     },
     candidateDetail: {
         display:    "flex",

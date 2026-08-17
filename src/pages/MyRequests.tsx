@@ -15,6 +15,7 @@ import {
     confirmMatch,
     cancelDonationRequest,
     confirmDonation,
+    submitDonorFeedback,
     getCandidatesForRequest,
     type CreateDonationRequestPayload,
     type UpdateDonationRequestPayload,
@@ -158,8 +159,12 @@ export default function MyRequests() {
     const [deleting,    setDeleting]    = useState<number | null>(null);
     const [confirming,  setConfirming]  = useState<number | null>(null);
     const [editingId,   setEditingId]   = useState<number | null>(null);
-    const [cancelling,       setCancelling]       = useState<number | null>(null);
-    const [confirmingDonation, setConfirmingDonation] = useState<number | null>(null);
+    const [cancelling,          setCancelling]          = useState<number | null>(null);
+    const [confirmingDonation,  setConfirmingDonation]  = useState<number | null>(null);
+    const [feedbackRequestId,   setFeedbackRequestId]   = useState<number | null>(null);
+    const [feedbackRating,      setFeedbackRating]      = useState(0);
+    const [feedbackComment,     setFeedbackComment]     = useState("");
+    const [submittingFeedback,  setSubmittingFeedback]  = useState(false);
 
     // ── Form state ──────────────────────────────────────────────────────────
     // bloodTypeName is sent as the enum name string (backend field is string? + Enum.TryParse)
@@ -414,15 +419,33 @@ export default function MyRequests() {
 
     // ── Confirm donation received ───────────────────────────────────────────
     async function handleConfirmDonation(id: number) {
-        if (!confirm("Mark this donation as received? This completes the request and awards points to the donor.")) return;
         setConfirmingDonation(id);
         try {
             await confirmDonation(id);
             load();
+            // Open the feedback form immediately after confirming
+            setFeedbackRating(0);
+            setFeedbackComment("");
+            setFeedbackRequestId(id);
         } catch (err) {
             alert(err instanceof Error ? err.message : "Failed to confirm donation.");
         } finally {
             setConfirmingDonation(null);
+        }
+    }
+
+    // ── Submit donor feedback ───────────────────────────────────────────────
+    async function handleSubmitFeedback(id: number) {
+        if (feedbackRating === 0) return;
+        setSubmittingFeedback(true);
+        try {
+            await submitDonorFeedback(id, { rating: feedbackRating, comment: feedbackComment || undefined });
+            setFeedbackRequestId(null);
+            load();
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Failed to submit feedback.");
+        } finally {
+            setSubmittingFeedback(false);
         }
     }
 
@@ -753,6 +776,22 @@ export default function MyRequests() {
                                             </span>
                                         </div>
 
+                                        {/* Donor aggregate rating */}
+                                        {(c.reviewCount ?? 0) > 0 ? (
+                                            <div style={s.candidateRating}>
+                                                <span style={s.ratingStars}>
+                                                    {[1,2,3,4,5].map(n => (
+                                                        <span key={n} style={{ color: n <= Math.round(c.averageRating ?? 0) ? "#f59e0b" : "#d1d5db" }}>★</span>
+                                                    ))}
+                                                </span>
+                                                <span style={s.ratingCount}>
+                                                    {c.averageRating?.toFixed(1)} ({c.reviewCount} review{c.reviewCount !== 1 ? "s" : ""})
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <div style={s.noReviews}>No reviews yet</div>
+                                        )}
+
                                         {/* Address */}
                                         {c.donorAddress && (
                                             <div style={s.candidateAddress}>
@@ -905,6 +944,14 @@ export default function MyRequests() {
                                                 </button>
                                             </>
                                         )}
+                                        {r.status === DonationRequestStatus.Completed && !r.hasFeedback && feedbackRequestId !== r.id && (
+                                            <button
+                                                style={s.feedbackBtn}
+                                                onClick={() => { setFeedbackRating(0); setFeedbackComment(""); setFeedbackRequestId(r.id); }}
+                                            >
+                                                ⭐ Leave Feedback
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1040,6 +1087,64 @@ export default function MyRequests() {
                                                 Discard
                                             </button>
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* ── Feedback form (opens right after confirming, or via "Leave Feedback") ── */}
+                                {feedbackRequestId === r.id && (
+                                    <div style={s.feedbackSection}>
+                                        <div style={s.feedbackHeader}>
+                                            <span style={s.feedbackTitle}>Rate your donor</span>
+                                            <button style={s.editFormDismiss} onClick={() => setFeedbackRequestId(null)}>✕</button>
+                                        </div>
+                                        <p style={s.feedbackSubtitle}>How was your experience with this donor?</p>
+                                        <div style={s.starRow}>
+                                            {[1, 2, 3, 4, 5].map(n => (
+                                                <button
+                                                    key={n}
+                                                    style={{ ...s.starBtn, color: n <= feedbackRating ? "#f59e0b" : "#d1d5db" }}
+                                                    onClick={() => setFeedbackRating(n)}
+                                                    disabled={submittingFeedback}
+                                                >
+                                                    ★
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <textarea
+                                            style={s.feedbackTextarea}
+                                            placeholder="Optional comment (e.g. 'Very punctual and kind')"
+                                            value={feedbackComment}
+                                            onChange={e => setFeedbackComment(e.target.value)}
+                                            disabled={submittingFeedback}
+                                            rows={3}
+                                        />
+                                        <div style={{ display: "flex", gap: 10 }}>
+                                            <button
+                                                style={{ ...s.receivedBtn, opacity: (feedbackRating === 0 || submittingFeedback) ? 0.5 : 1 }}
+                                                onClick={() => handleSubmitFeedback(r.id)}
+                                                disabled={feedbackRating === 0 || submittingFeedback}
+                                            >
+                                                {submittingFeedback ? "Submitting…" : "Submit Rating"}
+                                            </button>
+                                            <button style={page.secondaryBtn} onClick={() => setFeedbackRequestId(null)} disabled={submittingFeedback}>
+                                                Skip
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Submitted feedback (read-only) ── */}
+                                {r.status === DonationRequestStatus.Completed && r.hasFeedback && feedbackRequestId !== r.id && (
+                                    <div style={s.feedbackReadOnly}>
+                                        <span style={s.feedbackReadOnlyLabel}>Your rating:</span>
+                                        <span style={s.feedbackReadOnlyStars}>
+                                            {[1,2,3,4,5].map(n => (
+                                                <span key={n} style={{ color: n <= (r.feedbackRating ?? 0) ? "#f59e0b" : "#d1d5db" }}>★</span>
+                                            ))}
+                                        </span>
+                                        {r.feedbackComment && (
+                                            <span style={s.feedbackReadOnlyComment}>"{r.feedbackComment}"</span>
+                                        )}
                                     </div>
                                 )}
 
@@ -1376,6 +1481,88 @@ const s = {
         lineHeight: 1,
         padding:    4,
     } as React.CSSProperties,
+    // ── Feedback form ───────────────────────────────────────────────────────
+    feedbackBtn: {
+        padding:      "7px 14px",
+        background:   "linear-gradient(135deg, #78350f 0%, #d97706 100%)",
+        color:        "#fff",
+        border:       "none",
+        borderRadius: 8,
+        fontSize:     13,
+        fontWeight:   700,
+        cursor:       "pointer",
+        letterSpacing:"0.01em",
+    } as React.CSSProperties,
+    feedbackSection: {
+        borderTop:  "2px solid #fde68a",
+        background: "linear-gradient(180deg, #fffbeb 0%, #fff 100%)",
+        padding:    "20px 22px",
+        display:    "flex",
+        flexDirection: "column" as const,
+        gap:        12,
+    } as React.CSSProperties,
+    feedbackHeader: {
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "space-between",
+    } as React.CSSProperties,
+    feedbackTitle: {
+        fontSize:   15,
+        fontWeight: 800,
+        color:      "#1e293b",
+    } as React.CSSProperties,
+    feedbackSubtitle: {
+        fontSize: 13,
+        color:    "#64748b",
+        margin:   0,
+    } as React.CSSProperties,
+    starRow: {
+        display: "flex",
+        gap:     4,
+    } as React.CSSProperties,
+    starBtn: {
+        background: "none",
+        border:     "none",
+        fontSize:   28,
+        cursor:     "pointer",
+        padding:    "0 2px",
+        lineHeight: 1,
+        transition: "transform 0.1s",
+    } as React.CSSProperties,
+    feedbackTextarea: {
+        padding:      "10px 12px",
+        border:       "1px solid #e2e8f0",
+        borderRadius: 8,
+        fontSize:     13,
+        fontFamily:   "inherit",
+        color:        "#1e293b",
+        resize:       "vertical" as const,
+        width:        "100%",
+        boxSizing:    "border-box" as const,
+    } as React.CSSProperties,
+    feedbackReadOnly: {
+        borderTop:  "1px solid #f1f5f9",
+        background: "#fafafa",
+        padding:    "12px 22px",
+        display:    "flex",
+        alignItems: "center",
+        gap:        10,
+        flexWrap:   "wrap" as const,
+    } as React.CSSProperties,
+    feedbackReadOnlyLabel: {
+        fontSize:   12,
+        fontWeight: 600,
+        color:      "#64748b",
+    } as React.CSSProperties,
+    feedbackReadOnlyStars: {
+        fontSize: 18,
+        lineHeight: 1,
+    } as React.CSSProperties,
+    feedbackReadOnlyComment: {
+        fontSize:   13,
+        color:      "#475569",
+        fontStyle:  "italic",
+    } as React.CSSProperties,
     // ── Candidates panel ────────────────────────────────────────────────────
     candidatesPanel: {
         marginBottom:  24,
@@ -1530,6 +1717,24 @@ const s = {
         fontFamily:   "inherit",
         boxShadow:    "0 2px 8px rgba(198,40,40,0.25)",
         letterSpacing:"0.01em",
+    } as React.CSSProperties,
+    candidateRating: {
+        display:    "flex",
+        alignItems: "center",
+        gap:        6,
+    } as React.CSSProperties,
+    ratingStars: {
+        fontSize:   16,
+        lineHeight: 1,
+    } as React.CSSProperties,
+    ratingCount: {
+        fontSize:   12,
+        color:      "#64748b",
+    } as React.CSSProperties,
+    noReviews: {
+        fontSize:   12,
+        color:      "#94a3b8",
+        fontStyle:  "italic",
     } as React.CSSProperties,
     candidateMapWrap: {
         flexShrink:   0,
